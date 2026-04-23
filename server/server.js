@@ -16,7 +16,7 @@ app.use(apiLimiter); // Apply rate limiting
 // Health check
 app.get('/', (req, res) => {
   res.json({ 
-    message: '✅ Mental Health API Running (AI-Powered)',
+    message: 'Mental Health API Running (AI-Powered)',
     version: '2.0.0',
     features: {
       ai: 'Groq Llama 3.3 70B',
