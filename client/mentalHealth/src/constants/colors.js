@@ -5,7 +5,7 @@ export const Colors = {
     primaryDark: '#3a5234',  // Darker green
     
     // Background Colors
-    background: '#faf8f3',   // Warm beige/cream
+    background: '#ffffff',   // Warm beige/cream
     cardBackground: '#ffffff',
     
     // Text Colors

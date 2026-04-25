@@ -1,29 +1,24 @@
 {
   "expo": {
-    "name": "mentalHealth",
-    "slug": "mentalHealth",
+    "name": "Mental Health Fitness",
+    "slug": "mental-health-fitness",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "../mentalHealth/src/assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "../mentalHealth/src/assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#faf8f3"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mentalhealthfitness.app"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "../mentalHealth/src/assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#faf8f3"
       },
-      "edgeToEdgeEnabled": true
-    },
-    "web": {
-      "favicon": "../mentalHealth/src/assets/favicon.png"
+      "package": "com.mentalhealthfitness.app"
     }
   }
 }

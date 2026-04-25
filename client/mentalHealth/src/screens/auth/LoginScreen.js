@@ -9,7 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Image,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, BorderRadius, FontSizes } from '../../constants/colors';
@@ -17,11 +17,36 @@ import { Colors, Spacing, BorderRadius, FontSizes } from '../../constants/colors
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
+    // Basic validation
+    if (!email || !password) {
+      Alert.alert('Error', 'Please enter both email and password');
+      return;
+    }
+
+    if (!email.includes('@')) {
+      Alert.alert('Error', 'Please enter a valid email address');
+      return;
+    }
+
+    setLoading(true);
+
     // TODO: Connect to backend API
-    console.log('Login:', { email, password });
-    // navigation.navigate('Home');
+    setTimeout(() => {
+      setLoading(false);
+      Alert.alert('Success', 'Login functionality coming soon!');
+      // navigation.navigate('Home'); // Uncomment when Home is ready
+    }, 1000);
+  };
+
+  const handleGoogleSignIn = () => {
+    Alert.alert('Google Sign In', 'Google OAuth coming soon!');
+  };
+
+  const handleForgotPassword = () => {
+    Alert.alert('Forgot Password', 'Password reset coming soon!');
   };
 
   return (
@@ -33,14 +58,13 @@ export default function LoginScreen({ navigation }) {
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {/* Logo */}
         <View style={styles.logoContainer}>
-          <Image
-            source={require('../../assets/logo.png')} // We'll add this
-            style={styles.logo}
-            resizeMode="contain"
-          />
+          <View style={styles.logoPlaceholder}>
+            <Text style={styles.logoEmoji}>🧠</Text>
+          </View>
         </View>
 
         {/* Title */}
@@ -65,6 +89,7 @@ export default function LoginScreen({ navigation }) {
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
+              editable={!loading}
             />
           </View>
 
@@ -79,23 +104,34 @@ export default function LoginScreen({ navigation }) {
               onChangeText={setPassword}
               secureTextEntry
               autoCapitalize="none"
+              editable={!loading}
             />
           </View>
 
           {/* Forgot Password */}
-          <TouchableOpacity style={styles.forgotPassword}>
+          <TouchableOpacity 
+            style={styles.forgotPassword}
+            onPress={handleForgotPassword}
+            disabled={loading}
+          >
             <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
           </TouchableOpacity>
 
           {/* Login Button */}
-          <TouchableOpacity onPress={handleLogin}>
+          <TouchableOpacity 
+            onPress={handleLogin}
+            disabled={loading}
+            activeOpacity={0.8}
+          >
             <LinearGradient
               colors={['#51A2FF', '#00D5BE']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={styles.loginButton}
+              style={[styles.loginButton, loading && styles.buttonDisabled]}
             >
-              <Text style={styles.loginButtonText}>Login</Text>
+              <Text style={styles.loginButtonText}>
+                {loading ? 'Logging in...' : 'Login'}
+              </Text>
             </LinearGradient>
           </TouchableOpacity>
 
@@ -107,14 +143,23 @@ export default function LoginScreen({ navigation }) {
           </View>
 
           {/* Google Sign In */}
-          <TouchableOpacity style={styles.googleButton}>
+          <TouchableOpacity 
+            style={styles.googleButton}
+            onPress={handleGoogleSignIn}
+            disabled={loading}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.googleIcon}>G</Text>
             <Text style={styles.googleButtonText}>Continue with Google</Text>
           </TouchableOpacity>
 
           {/* Create Account */}
           <View style={styles.signupContainer}>
             <Text style={styles.signupText}>Don't have an account? </Text>
-            <TouchableOpacity onPress={() => navigation.navigate('Signup')}>
+            <TouchableOpacity 
+              onPress={() => navigation.navigate('Signup')}
+              disabled={loading}
+            >
               <Text style={styles.signupLink}>Create Account</Text>
             </TouchableOpacity>
           </View>
@@ -137,29 +182,43 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.lg,
+    marginTop: Spacing.md,
   },
-  logo: {
-    width: 80,
-    height: 80,
+  logoPlaceholder: {
+    width: 90,
+    height: 90,
+    backgroundColor: '#51A2FF',
+    borderRadius: BorderRadius.large,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#51A2FF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  logoEmoji: {
+    fontSize: 45,
   },
   title: {
-    fontSize: FontSizes.title,
+    fontSize: 26,
     fontWeight: 'bold',
     color: Colors.textPrimary,
     textAlign: 'center',
     marginBottom: Spacing.sm,
-    lineHeight: 34,
+    lineHeight: 32,
   },
   subtitle: {
     fontSize: FontSizes.medium,
     color: Colors.textSecondary,
     textAlign: 'center',
     marginBottom: Spacing.xl,
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: Spacing.sm,
+    lineHeight: 22,
   },
   formContainer: {
-    marginTop: Spacing.lg,
+    marginTop: Spacing.md,
   },
   welcomeText: {
     fontSize: FontSizes.xlarge,
@@ -180,14 +239,20 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderRadius: BorderRadius.medium,
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
+    paddingVertical: Spacing.md + 2,
     fontSize: FontSizes.medium,
     color: Colors.textPrimary,
     borderWidth: 1,
     borderColor: Colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   forgotPassword: {
     alignSelf: 'flex-end',
+    marginTop: Spacing.sm,
     marginBottom: Spacing.lg,
   },
   forgotPasswordText: {
@@ -197,9 +262,17 @@ const styles = StyleSheet.create({
   },
   loginButton: {
     borderRadius: BorderRadius.large,
-    paddingVertical: Spacing.md + 2,
+    paddingVertical: Spacing.md + 4,
     alignItems: 'center',
     marginBottom: Spacing.lg,
+    shadowColor: '#51A2FF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   loginButtonText: {
     color: Colors.white,
@@ -225,10 +298,23 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderRadius: BorderRadius.large,
     paddingVertical: Spacing.md + 2,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: Colors.border,
     marginBottom: Spacing.xl,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  googleIcon: {
+    fontSize: FontSizes.xlarge,
+    fontWeight: 'bold',
+    color: '#4285F4',
+    marginRight: Spacing.sm,
   },
   googleButtonText: {
     color: Colors.textPrimary,
@@ -239,6 +325,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
+    marginTop: Spacing.md,
   },
   signupText: {
     fontSize: FontSizes.medium,

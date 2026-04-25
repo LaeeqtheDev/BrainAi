@@ -1,6 +1,6 @@
 import React from 'react';
-import OnboardingScreen  from './src/screens/auth/OnboardingScreen';
+import AppNavigator from './src/navigation/AppNavigator';
 
 export default function App() {
-  return <OnboardingScreen  />;
+  return <AppNavigator />;
 }
