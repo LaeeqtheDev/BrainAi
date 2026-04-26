@@ -1,230 +1,155 @@
 import React from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  StatusBar,
-  ScrollView,
+  View, Text, TouchableOpacity, StyleSheet, ScrollView, SafeAreaView, StatusBar,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Spacing, BorderRadius, FontSizes } from '../../constants/colors';
+import { Ionicons } from '@expo/vector-icons';
+import { Colors, Spacing, Radius, FontSizes, Fonts, Shadow } from '../../config/theme';
+
+const PILLARS = [
+  {
+    icon: 'sparkles-outline',
+    tint: '#EFE6D6',
+    title: 'Notice the small things',
+    text: 'A gentle daily check-in that becomes a quiet ritual.',
+  },
+  {
+    icon: 'book-outline',
+    tint: '#E2EAE3',
+    title: 'Write without pressure',
+    text: 'Private journaling, just for you. No streaks. No guilt.',
+  },
+  {
+    icon: 'leaf-outline',
+    tint: '#F5DECF',
+    title: 'See your weather',
+    text: 'Patterns in your mood become visible, not overwhelming.',
+  },
+];
 
 export default function OnboardingScreen({ navigation }) {
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Logo */}
-        <View style={styles.logoContainer}>
-          <View style={styles.logoPlaceholder}>
-            <Text style={styles.logoEmoji}>🧠</Text>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
+          <View style={styles.brandMark}>
+            <View style={styles.brandDot} />
           </View>
+          <Text style={styles.brandName}>Stillwater</Text>
         </View>
 
-        {/* Title */}
-        <Text style={styles.title}>AI Powered Mental{'\n'}Health Fitness</Text>
-        <Text style={styles.subtitle}>
-          Your private companion for emotional wellness and peace of mind
-        </Text>
-
-        {/* Benefits */}
-        <View style={styles.benefitsContainer}>
-          {/* Benefit 1 - Stress Detection */}
-          <View style={styles.benefitCard}>
-            <View style={[styles.benefitIcon, { backgroundColor: '#E3F2FD' }]}>
-              <Text style={styles.benefitEmoji}>📈</Text>
-            </View>
-            <View style={styles.benefitContent}>
-              <Text style={styles.benefitTitle}>Stress Detection</Text>
-              <Text style={styles.benefitText}>
-                AI-powered insights to understand your emotional patterns
-              </Text>
-            </View>
-          </View>
-
-          {/* Benefit 2 - Private Support */}
-          <View style={styles.benefitCard}>
-            <View style={[styles.benefitIcon, { backgroundColor: '#E8F5E9' }]}>
-              <Text style={styles.benefitEmoji}>🔒</Text>
-            </View>
-            <View style={styles.benefitContent}>
-              <Text style={styles.benefitTitle}>Private Support</Text>
-              <Text style={styles.benefitText}>
-                Your conversations and data stay completely secure
-              </Text>
-            </View>
-          </View>
-
-          {/* Benefit 3 - Mood Insights */}
-          <View style={styles.benefitCard}>
-            <View style={[styles.benefitIcon, { backgroundColor: '#FFF3E0' }]}>
-              <Text style={styles.benefitEmoji}>✨</Text>
-            </View>
-            <View style={styles.benefitContent}>
-              <Text style={styles.benefitTitle}>Mood Insights</Text>
-              <Text style={styles.benefitText}>
-                Track your progress and discover what brings you peace
-              </Text>
-            </View>
-          </View>
+        <View style={styles.hero}>
+          <Text style={styles.eyebrow}>A quieter kind of wellness app</Text>
+          <Text style={styles.title}>
+            Be with{'\n'}
+            <Text style={styles.titleItalic}>yourself,</Text>{'\n'}
+            gently.
+          </Text>
+          <Text style={styles.subtitle}>
+            Stillwater is a soft place for your moods, thoughts, and small reflections — kept private, paced by you.
+          </Text>
         </View>
 
-        {/* Continue Button */}
-        <TouchableOpacity 
-          style={styles.continueButtonContainer}
-          onPress={() => navigation.navigate('Login')}
+        <View style={styles.pillars}>
+          {PILLARS.map((p, i) => (
+            <View key={i} style={styles.pillar}>
+              <View style={[styles.pillarIcon, { backgroundColor: p.tint }]}>
+                <Ionicons name={p.icon} size={20} color={Colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.pillarTitle}>{p.title}</Text>
+                <Text style={styles.pillarText}>{p.text}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+
+        <TouchableOpacity
+          activeOpacity={0.9}
+          style={styles.cta}
+          onPress={() => navigation.navigate('Signup')}
         >
-          <LinearGradient
-            colors={['#51A2FF', '#00D5BE']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.continueButton}
-          >
-            <Text style={styles.continueButtonText}>Continue</Text>
-            <Text style={styles.continueButtonArrow}>→</Text>
-          </LinearGradient>
+          <Text style={styles.ctaText}>Begin</Text>
+          <Ionicons name="arrow-forward" size={18} color={Colors.textOnDark} />
         </TouchableOpacity>
 
-        {/* Bottom Links */}
-        <View style={styles.bottomLinks}>
-          <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-            <Text style={styles.linkText}>Login</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate('Signup')}>
-            <Text style={styles.linkText}>Create Account</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity onPress={() => navigation.navigate('Login')} style={styles.loginLink}>
+          <Text style={styles.loginText}>
+            Already here? <Text style={styles.loginTextBold}>Sign in</Text>
+          </Text>
+        </TouchableOpacity>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
+  container: { flex: 1, backgroundColor: Colors.background },
+  scroll: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.lg, paddingBottom: Spacing.xl },
+  header: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    marginBottom: Spacing.xl,
   },
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.xxl + 20,
-    paddingBottom: Spacing.xl,
+  brandMark: {
+    width: 32, height: 32, borderRadius: 16,
+    borderWidth: 1, borderColor: Colors.primary,
+    alignItems: 'center', justifyContent: 'center',
   },
-  logoContainer: {
-    alignItems: 'center',
-    marginBottom: Spacing.lg,
+  brandDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.accent },
+  brandName: {
+    fontSize: FontSizes.lg, fontFamily: Fonts.display,
+    color: Colors.primary, letterSpacing: 0.5,
   },
-  logoPlaceholder: {
-    width: 100,
-    height: 100,
-    backgroundColor: '#51A2FF',
-    borderRadius: BorderRadius.large,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#51A2FF',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  logoEmoji: {
-    fontSize: 50,
+  hero: { marginTop: Spacing.lg, marginBottom: Spacing.xl },
+  eyebrow: {
+    fontSize: FontSizes.xs, fontFamily: Fonts.bodyMedium,
+    color: Colors.accent, letterSpacing: 1.8,
+    textTransform: 'uppercase', marginBottom: Spacing.md,
   },
   title: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    color: Colors.textPrimary,
-    textAlign: 'center',
-    marginBottom: Spacing.sm,
-    lineHeight: 32,
+    fontSize: 52, fontFamily: Fonts.display, color: Colors.textPrimary,
+    lineHeight: 58, letterSpacing: -1,
+  },
+  titleItalic: {
+    fontFamily: Fonts.displayItalic, color: Colors.accent,
   },
   subtitle: {
-    fontSize: FontSizes.medium,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: Spacing.xl,
-    paddingHorizontal: Spacing.md,
-    lineHeight: 22,
+    fontSize: FontSizes.md, fontFamily: Fonts.body,
+    color: Colors.textSecondary, marginTop: Spacing.md,
+    lineHeight: 24,
   },
-  benefitsContainer: {
-    marginBottom: Spacing.xl,
+  pillars: { marginBottom: Spacing.xl, gap: Spacing.md },
+  pillar: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.md,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg, padding: Spacing.md,
+    ...Shadow.soft,
   },
-  benefitCard: {
-    flexDirection: 'row',
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.medium,
-    padding: Spacing.md,
+  pillarIcon: {
+    width: 40, height: 40, borderRadius: Radius.md,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  pillarTitle: {
+    fontSize: FontSizes.md, fontFamily: Fonts.bodyMedium,
+    color: Colors.textPrimary, marginBottom: 2,
+  },
+  pillarText: {
+    fontSize: FontSizes.sm, fontFamily: Fonts.body,
+    color: Colors.textSecondary, lineHeight: 20,
+  },
+  cta: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, backgroundColor: Colors.primary,
+    paddingVertical: 18, borderRadius: Radius.pill,
     marginBottom: Spacing.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
   },
-  benefitIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: BorderRadius.medium,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: Spacing.md,
+  ctaText: {
+    fontSize: FontSizes.md, fontFamily: Fonts.bodyMedium,
+    color: Colors.textOnDark, letterSpacing: 0.5,
   },
-  benefitEmoji: {
-    fontSize: 24,
+  loginLink: { alignItems: 'center', paddingVertical: Spacing.sm },
+  loginText: {
+    fontSize: FontSizes.sm, fontFamily: Fonts.body, color: Colors.textSecondary,
   },
-  benefitContent: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  benefitTitle: {
-    fontSize: FontSizes.large,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    marginBottom: 4,
-  },
-  benefitText: {
-    fontSize: FontSizes.medium,
-    color: Colors.textSecondary,
-    lineHeight: 20,
-  },
-  continueButtonContainer: {
-    marginBottom: Spacing.lg,
-  },
-  continueButton: {
-    borderRadius: BorderRadius.large,
-    paddingVertical: Spacing.md + 4,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#51A2FF',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  continueButtonText: {
-    color: Colors.white,
-    fontSize: FontSizes.large,
-    fontWeight: '600',
-    marginRight: Spacing.sm,
-  },
-  continueButtonArrow: {
-    color: Colors.white,
-    fontSize: FontSizes.xlarge,
-    fontWeight: '600',
-  },
-  bottomLinks: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingHorizontal: Spacing.xl,
-  },
-  linkText: {
-    fontSize: FontSizes.medium,
-    color: Colors.textSecondary,
-    fontWeight: '500',
-  },
+  loginTextBold: { fontFamily: Fonts.bodyMedium, color: Colors.primary },
 });

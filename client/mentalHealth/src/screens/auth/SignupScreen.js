@@ -1,366 +1,182 @@
 import React, { useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  StatusBar,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Alert,
+  View, Text, ScrollView, SafeAreaView, KeyboardAvoidingView,
+  Platform, TouchableOpacity, Alert, StyleSheet, StatusBar,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Spacing, BorderRadius, FontSizes } from '../../constants/colors';
+import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
+
+import { signUp } from '../../services/authService';
+import Input from '../../components/common/Input';
+import Button from '../../components/common/Button';
+import { Colors, Spacing, Fonts, FontSizes } from '../../config/theme';
+
+const isExpoGo = Constants.appOwnership === 'expo';
 
 export default function SignupScreen({ navigation }) {
-  const [name, setName] = useState('');
+  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState({});
 
-  const handleSignup = async () => {
-    // Validation
-    if (!name || !email || !password || !confirmPassword) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
-    }
-
-    if (!email.includes('@')) {
-      Alert.alert('Error', 'Please enter a valid email address');
-      return;
-    }
-
-    if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters');
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
-      return;
-    }
-
-    setLoading(true);
-
-    // TODO: Connect to backend API
-    setTimeout(() => {
-      setLoading(false);
-      Alert.alert('Success', 'Account created! You can now login.');
-      navigation.navigate('Login');
-    }, 1000);
+  const validate = () => {
+    const e = {};
+    if (!fullName.trim()) e.fullName = 'Required';
+    if (!email.match(/\S+@\S+\.\S+/)) e.email = 'Enter a valid email';
+    if (password.length < 6) e.password = 'At least 6 characters';
+    if (password !== confirmPassword) e.confirmPassword = 'Passwords do not match';
+    setErrors(e);
+    return Object.keys(e).length === 0;
   };
 
-  const handleGoogleSignIn = () => {
-    Alert.alert('Google Sign In', 'Google OAuth coming soon!');
+  const handleSignup = async () => {
+    if (!validate()) return;
+
+    setLoading(true);
+    const res = await signUp(email, password, fullName.trim());
+    setLoading(false);
+
+    if (!res.success) Alert.alert('Could not create account', res.error);
+    // AppNavigator handles routing
+  };
+
+  const handleGoogle = () => {
+    if (isExpoGo) {
+      Alert.alert(
+        'Google Sign-In unavailable',
+        'Google Sign-In requires a development build. Please sign up with email while testing in Expo Go.'
+      );
+    } else {
+      Alert.alert('Coming soon', 'Google Sign-In will be wired up after we set up the development build.');
+    }
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
       >
-        {/* Logo */}
-        <View style={styles.logoContainer}>
-          <View style={styles.logoPlaceholder}>
-            <Text style={styles.logoEmoji}>🧠</Text>
-          </View>
-        </View>
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <Ionicons name="chevron-back" size={22} color={Colors.textPrimary} />
+          </TouchableOpacity>
 
-        {/* Title */}
-        <Text style={styles.title}>Create Account</Text>
-        <Text style={styles.subtitle}>
-          Join us on your journey to emotional wellness
-        </Text>
-
-        {/* Signup Form */}
-        <View style={styles.formContainer}>
-          {/* Name Input */}
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Full Name</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your name"
-              placeholderTextColor={Colors.textLight}
-              value={name}
-              onChangeText={setName}
-              autoCapitalize="words"
-              editable={!loading}
-            />
+          <View style={styles.header}>
+            <Text style={styles.eyebrow}>A new beginning</Text>
+            <Text style={styles.title}>
+              Make this{'\n'}
+              <Text style={styles.titleItalic}>your space.</Text>
+            </Text>
           </View>
 
-          {/* Email Input */}
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your email"
-              placeholderTextColor={Colors.textLight}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              editable={!loading}
-            />
-          </View>
+          <Input
+            label="Full name"
+            value={fullName}
+            onChangeText={setFullName}
+            placeholder="Your name"
+            autoCapitalize="words"
+            error={errors.fullName}
+          />
 
-          {/* Password Input */}
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Password</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Create a password (min. 6 characters)"
-              placeholderTextColor={Colors.textLight}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              autoCapitalize="none"
-              editable={!loading}
-            />
-          </View>
+          <Input
+            label="Email"
+            value={email}
+            onChangeText={setEmail}
+            placeholder="you@example.com"
+            keyboardType="email-address"
+            error={errors.email}
+          />
 
-          {/* Confirm Password Input */}
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Confirm Password</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Re-enter your password"
-              placeholderTextColor={Colors.textLight}
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              secureTextEntry
-              autoCapitalize="none"
-              editable={!loading}
-            />
-          </View>
+          <Input
+            label="Password"
+            value={password}
+            onChangeText={setPassword}
+            placeholder="At least 6 characters"
+            secureTextEntry
+            error={errors.password}
+          />
 
-          {/* Terms & Privacy */}
-          <Text style={styles.termsText}>
-            By signing up, you agree to our{' '}
-            <Text style={styles.termsLink}>Terms of Service</Text> and{' '}
-            <Text style={styles.termsLink}>Privacy Policy</Text>
-          </Text>
+          <Input
+            label="Confirm password"
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            placeholder="Repeat your password"
+            secureTextEntry
+            error={errors.confirmPassword}
+          />
 
-          {/* Signup Button */}
-          <TouchableOpacity 
+          <Button
+            title="Create account"
             onPress={handleSignup}
-            disabled={loading}
-            activeOpacity={0.8}
-          >
-            <LinearGradient
-              colors={['#51A2FF', '#00D5BE']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={[styles.signupButton, loading && styles.buttonDisabled]}
-            >
-              <Text style={styles.signupButtonText}>
-                {loading ? 'Creating Account...' : 'Create Account'}
-              </Text>
-            </LinearGradient>
-          </TouchableOpacity>
+            loading={loading}
+            style={{ marginTop: Spacing.sm }}
+          />
 
-          {/* Divider */}
-          <View style={styles.dividerContainer}>
-            <View style={styles.divider} />
+          <View style={styles.divider}>
+            <View style={styles.dividerLine} />
             <Text style={styles.dividerText}>or</Text>
-            <View style={styles.divider} />
+            <View style={styles.dividerLine} />
           </View>
 
-          {/* Google Sign In */}
-          <TouchableOpacity 
-            style={styles.googleButton}
-            onPress={handleGoogleSignIn}
-            disabled={loading}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.googleIcon}>G</Text>
-            <Text style={styles.googleButtonText}>Continue with Google</Text>
+          <Button
+            title="Continue with Google"
+            variant="secondary"
+            onPress={handleGoogle}
+            icon={<Ionicons name="logo-google" size={18} color={Colors.textPrimary} />}
+          />
+
+          <TouchableOpacity onPress={() => navigation.navigate('Login')} style={styles.swap}>
+            <Text style={styles.swapText}>
+              Already have an account? <Text style={styles.swapBold}>Sign in</Text>
+            </Text>
           </TouchableOpacity>
-
-          {/* Login Link */}
-          <View style={styles.loginContainer}>
-            <Text style={styles.loginText}>Already have an account? </Text>
-            <TouchableOpacity 
-              onPress={() => navigation.navigate('Login')}
-              disabled={loading}
-            >
-              <Text style={styles.loginLink}>Login</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
+  container: { flex: 1, backgroundColor: Colors.background },
+  scroll: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xl },
+  backBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: Colors.surface,
+    alignItems: 'center', justifyContent: 'center',
+    marginTop: Spacing.md, marginBottom: Spacing.lg,
+    borderWidth: 1, borderColor: Colors.border,
   },
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.xl,
-    paddingBottom: Spacing.xl,
-  },
-  logoContainer: {
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-  },
-  logoPlaceholder: {
-    width: 80,
-    height: 80,
-    backgroundColor: '#51A2FF',
-    borderRadius: BorderRadius.large,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#51A2FF',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  logoEmoji: {
-    fontSize: 40,
+  header: { marginBottom: Spacing.lg },
+  eyebrow: {
+    fontSize: FontSizes.xs, fontFamily: Fonts.bodyMedium,
+    color: Colors.accent, letterSpacing: 1.8,
+    textTransform: 'uppercase', marginBottom: Spacing.sm,
   },
   title: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    color: Colors.textPrimary,
-    textAlign: 'center',
-    marginBottom: Spacing.sm,
+    fontSize: 40, fontFamily: Fonts.display,
+    color: Colors.textPrimary, lineHeight: 46, letterSpacing: -0.5,
   },
-  subtitle: {
-    fontSize: FontSizes.medium,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: Spacing.lg,
-    paddingHorizontal: Spacing.md,
-    lineHeight: 22,
-  },
-  formContainer: {
-    marginTop: Spacing.md,
-  },
-  inputContainer: {
-    marginBottom: Spacing.md,
-  },
-  label: {
-    fontSize: FontSizes.medium,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.sm,
-    fontWeight: '500',
-  },
-  input: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.medium,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md + 2,
-    fontSize: FontSizes.medium,
-    color: Colors.textPrimary,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  termsText: {
-    fontSize: FontSizes.small,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: Spacing.lg,
-    lineHeight: 18,
-    paddingHorizontal: Spacing.sm,
-  },
-  termsLink: {
-    color: '#51A2FF',
-    fontWeight: '500',
-  },
-  signupButton: {
-    borderRadius: BorderRadius.large,
-    paddingVertical: Spacing.md + 4,
-    alignItems: 'center',
-    marginBottom: Spacing.lg,
-    shadowColor: '#51A2FF',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  signupButtonText: {
-    color: Colors.white,
-    fontSize: FontSizes.large,
-    fontWeight: '600',
-  },
-  dividerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: Spacing.lg,
-  },
+  titleItalic: { fontFamily: Fonts.displayItalic, color: Colors.accent },
   divider: {
-    flex: 1,
-    height: 1,
-    backgroundColor: Colors.border,
+    flexDirection: 'row', alignItems: 'center',
+    marginVertical: Spacing.lg, gap: Spacing.md,
   },
+  dividerLine: { flex: 1, height: 1, backgroundColor: Colors.border },
   dividerText: {
-    marginHorizontal: Spacing.md,
-    fontSize: FontSizes.medium,
-    color: Colors.textSecondary,
+    fontSize: FontSizes.xs, fontFamily: Fonts.body,
+    color: Colors.textMuted, letterSpacing: 1.2, textTransform: 'uppercase',
   },
-  googleButton: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.large,
-    paddingVertical: Spacing.md + 2,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    marginBottom: Spacing.xl,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+  swap: { alignItems: 'center', marginTop: Spacing.lg, paddingVertical: Spacing.sm },
+  swapText: {
+    fontSize: FontSizes.sm, fontFamily: Fonts.body, color: Colors.textSecondary,
   },
-  googleIcon: {
-    fontSize: FontSizes.xlarge,
-    fontWeight: 'bold',
-    color: '#4285F4',
-    marginRight: Spacing.sm,
-  },
-  googleButtonText: {
-    color: Colors.textPrimary,
-    fontSize: FontSizes.large,
-    fontWeight: '500',
-  },
-  loginContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: Spacing.md,
-  },
-  loginText: {
-    fontSize: FontSizes.medium,
-    color: Colors.textSecondary,
-  },
-  loginLink: {
-    fontSize: FontSizes.medium,
-    color: '#51A2FF',
-    fontWeight: '600',
-  },
+  swapBold: { fontFamily: Fonts.bodyMedium, color: Colors.primary },
 });

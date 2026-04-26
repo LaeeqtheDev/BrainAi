@@ -1,196 +1,202 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  StatusBar,
-  ScrollView,
-  SafeAreaView,
-  KeyboardAvoidingView,
-  Platform,
+  View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet,
+  KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
-import { Colors, Spacing, BorderRadius, FontSizes } from '../../constants/colors';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+
+import { getChatHistory, sendChatMessage } from '../../services/chatService';
+import { Colors, Spacing, Fonts, FontSizes, Radius, Shadow } from '../../config/theme';
 
 export default function ChatbotScreen({ navigation }) {
-  const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState([
-    {
-      id: 1,
-      text: "Hello! I'm here to support you. How are you feeling today?",
-      isBot: true,
-      stressLevel: 'low',
-      timestamp: new Date(),
-    },
-  ]);
-  const scrollViewRef = useRef();
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [suggestions, setSuggestions] = useState(['Coping Tips', 'Reflect', 'Talk More']);
 
-  const handleSend = () => {
-    if (message.trim() === '') return;
+  // ✅ CRISIS STATE
+  const [crisisInfo, setCrisisInfo] = useState(null);
 
-    // Add user message
-    const userMessage = {
-      id: messages.length + 1,
-      text: message,
-      isBot: false,
-      timestamp: new Date(),
-    };
-
-    setMessages([...messages, userMessage]);
-    setMessage('');
-
-    // Simulate bot response
-    setTimeout(() => {
-      const botResponse = {
-        id: messages.length + 2,
-        text: getBotResponse(message),
-        isBot: true,
-        stressLevel: detectStressLevel(message),
-        timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, botResponse]);
-    }, 1000);
-  };
-
-  const getBotResponse = (userMessage) => {
-    const lowerMsg = userMessage.toLowerCase();
-    
-    if (lowerMsg.includes('stress') || lowerMsg.includes('anxious')) {
-      return "I hear that you're feeling stressed. That's completely valid. Would you like to try a breathing exercise or talk about what's troubling you?";
-    } else if (lowerMsg.includes('sad') || lowerMsg.includes('down')) {
-      return "I'm sorry you're feeling this way. Remember, it's okay to not be okay. Would you like to share what's on your mind?";
-    } else if (lowerMsg.includes('happy') || lowerMsg.includes('good')) {
-      return "That's wonderful! I'm glad you're feeling positive. What's making you feel good today?";
-    } else {
-      return "Thank you for sharing. I'm here to listen and support you. How can I help you feel better today?";
-    }
-  };
-
-  const detectStressLevel = (text) => {
-    const lowerText = text.toLowerCase();
-    if (lowerText.includes('panic') || lowerText.includes('overwhelming')) return 'high';
-    if (lowerText.includes('stress') || lowerText.includes('anxious')) return 'medium';
-    return 'low';
-  };
-
-  const getStressBadge = (level) => {
-    const badges = {
-      low: { color: '#66bb6a', emoji: '😌', label: 'Calm' },
-      medium: { color: '#ffb74d', emoji: '😰', label: 'Mild Stress' },
-      high: { color: '#ef5350', emoji: '😟', label: 'High Stress' },
-    };
-    return badges[level] || badges.low;
-  };
-
-  const quickActions = [
-    { label: 'Coping Tips', icon: '💡' },
-    { label: 'Breathing Exercise', icon: '🫁' },
-    { label: 'Talk More', icon: '💬' },
-  ];
+  const scrollRef = useRef(null);
 
   useEffect(() => {
-    scrollViewRef.current?.scrollToEnd({ animated: true });
+    (async () => {
+      const history = await getChatHistory(50);
+      if (history.length === 0) {
+        setMessages([
+          {
+            id: 'welcome',
+            role: 'assistant',
+            text: "Hi, I'm here to listen. How are you feeling today?",
+          },
+        ]);
+      } else {
+        setMessages(history);
+      }
+      setLoading(false);
+    })();
+  }, []);
+
+  useEffect(() => {
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
   }, [messages]);
 
+  const send = async (textOverride) => {
+    const text = (textOverride ?? input).trim();
+    if (!text || sending) return;
+
+    const tempUserMsg = { id: `u-${Date.now()}`, role: 'user', text };
+    setMessages((prev) => [...prev, tempUserMsg]);
+    setInput('');
+    setSending(true);
+
+    const res = await sendChatMessage(text);
+
+    if (res.success) {
+
+      // ✅ CRISIS HANDLING (NEW)
+      if (res.crisisFlag) {
+        setCrisisInfo(res.crisisResources || {
+          title: "Support Resources",
+          message: "You're not alone. Please consider reaching out for support.",
+        });
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        { id: `a-${Date.now()}`, role: 'assistant', text: res.reply },
+      ]);
+
+      if (res.suggestions) setSuggestions(res.suggestions);
+
+    } else {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `err-${Date.now()}`,
+          role: 'assistant',
+          text: "I couldn't reach the server. Check your connection and try again.",
+        },
+      ]);
+    }
+
+    setSending(false);
+  };
+
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.white} />
+    <SafeAreaView style={styles.container} edges={['top']}>
+
+      {/* ✅ CRISIS BANNER */}
+      {crisisInfo && (
+        <View style={styles.crisisBanner}>
+          <Ionicons name="alert-circle" size={18} color="#B00020" />
+          <View style={{ flex: 1, marginLeft: 8 }}>
+            <Text style={styles.crisisTitle}>
+              {crisisInfo.title || 'Support Available'}
+            </Text>
+            <Text style={styles.crisisText}>
+              {crisisInfo.message || 'You are not alone. Help is available.'}
+            </Text>
+          </View>
+        </View>
+      )}
 
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.backIcon}>←</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.back}>
+          <Ionicons name="chevron-back" size={22} color={Colors.textPrimary} />
         </TouchableOpacity>
-        <View style={styles.headerInfo}>
-          <Text style={styles.headerTitle}>AI Companion</Text>
-          <Text style={styles.headerSubtitle}>Always here to listen</Text>
+
+        <View style={styles.headerCenter}>
+          <View style={styles.headerIcon}>
+            <Ionicons name="leaf" size={16} color={Colors.surface} />
+          </View>
+          <View>
+            <Text style={styles.headerTitle}>Stillwater</Text>
+            <Text style={styles.headerSub}>Always here to listen</Text>
+          </View>
         </View>
-        <View style={styles.botAvatar}>
-          <Text style={styles.botAvatarEmoji}>🤖</Text>
-        </View>
+
+        <View style={{ width: 40 }} />
       </View>
 
-      {/* Messages */}
       <KeyboardAvoidingView
-        style={styles.chatContainer}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
       >
         <ScrollView
-          ref={scrollViewRef}
-          contentContainerStyle={styles.messagesContainer}
-          showsVerticalScrollIndicator={false}
-          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+          ref={scrollRef}
+          contentContainerStyle={styles.messages}
+          keyboardShouldPersistTaps="handled"
         >
-          {messages.map((msg) => (
-            <View key={msg.id} style={styles.messageWrapper}>
-              {msg.isBot ? (
-                // Bot Message
-                <View style={styles.botMessageContainer}>
-                  <View style={styles.botMessage}>
-                    <Text style={styles.botMessageText}>{msg.text}</Text>
-                    {msg.stressLevel && (
-                      <View style={[styles.stressBadge, { backgroundColor: getStressBadge(msg.stressLevel).color }]}>
-                        <Text style={styles.stressBadgeEmoji}>{getStressBadge(msg.stressLevel).emoji}</Text>
-                        <Text style={styles.stressBadgeText}>{getStressBadge(msg.stressLevel).label}</Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text style={styles.timestamp}>
-                    {msg.timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+          {loading ? (
+            <ActivityIndicator color={Colors.primary} style={{ marginTop: 40 }} />
+          ) : (
+            messages.map((m) => (
+              <View
+                key={m.id}
+                style={[
+                  styles.bubbleWrap,
+                  m.role === 'user' ? styles.bubbleWrapUser : styles.bubbleWrapBot,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.bubble,
+                    m.role === 'user' ? styles.bubbleUser : styles.bubbleBot,
+                  ]}
+                >
+                  <Text style={m.role === 'user' ? styles.textUser : styles.textBot}>
+                    {m.text}
                   </Text>
                 </View>
-              ) : (
-                // User Message
-                <View style={styles.userMessageContainer}>
-                  <View style={styles.userMessage}>
-                    <Text style={styles.userMessageText}>{msg.text}</Text>
-                  </View>
-                  <Text style={styles.timestamp}>
-                    {msg.timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                  </Text>
-                </View>
-              )}
+              </View>
+            ))
+          )}
+
+          {sending && (
+            <View style={styles.bubbleWrapBot}>
+              <View style={[styles.bubble, styles.bubbleBot]}>
+                <Text style={styles.textBot}>···</Text>
+              </View>
             </View>
-          ))}
+          )}
         </ScrollView>
 
-        {/* Quick Actions */}
-        <View style={styles.quickActionsContainer}>
-          {quickActions.map((action, index) => (
-            <TouchableOpacity
-              key={index}
-              style={styles.quickActionButton}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.quickActionIcon}>{action.icon}</Text>
-              <Text style={styles.quickActionLabel}>{action.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        {/* Suggestions */}
+        {!sending && (
+          <View style={styles.chipsRow}>
+            {suggestions.map((s) => (
+              <TouchableOpacity
+                key={s}
+                onPress={() => send(s)}
+                style={styles.chip}
+              >
+                <Text style={styles.chipText}>{s}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
         {/* Input */}
-        <View style={styles.inputContainer}>
+        <View style={styles.inputRow}>
           <TextInput
+            value={input}
+            onChangeText={setInput}
+            placeholder="Type your message…"
+            placeholderTextColor={Colors.textMuted}
             style={styles.input}
-            placeholder="Type your message..."
-            placeholderTextColor={Colors.textLight}
-            value={message}
-            onChangeText={setMessage}
             multiline
-            maxLength={500}
           />
+
           <TouchableOpacity
-            style={[styles.sendButton, !message.trim() && styles.sendButtonDisabled]}
-            onPress={handleSend}
-            disabled={!message.trim()}
-            activeOpacity={0.7}
+            onPress={() => send()}
+            disabled={!input.trim() || sending}
+            style={[styles.sendBtn, (!input.trim() || sending) && { opacity: 0.4 }]}
           >
-            <Text style={styles.sendIcon}>➤</Text>
+            <Ionicons name="send" size={18} color={Colors.surface} />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -199,189 +205,143 @@ export default function ChatbotScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
+
+  container: { flex: 1, backgroundColor: Colors.background },
+
+  crisisBanner: {
+    flexDirection: 'row',
+    padding: 12,
+    backgroundColor: '#FFE9EC',
+    borderBottomWidth: 1,
+    borderColor: '#FFCDD2',
+    alignItems: 'center',
   },
+
+  crisisTitle: {
+    fontFamily: Fonts.bodyMedium,
+    color: '#B00020',
+    fontSize: FontSizes.sm,
+  },
+
+  crisisText: {
+    fontFamily: Fonts.body,
+    color: '#B00020',
+    fontSize: FontSizes.xs,
+    marginTop: 2,
+  },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.white,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
+    padding: Spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
   },
-  backButton: {
+
+  back: {
     width: 40,
     height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: Spacing.sm,
   },
-  backIcon: {
-    fontSize: 24,
-    color: Colors.textPrimary,
-  },
-  headerInfo: {
+
+  headerCenter: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 12,
+    gap: 10,
   },
+
+  headerIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
   headerTitle: {
-    fontSize: FontSizes.large,
-    fontWeight: '600',
+    fontFamily: Fonts.display,
     color: Colors.textPrimary,
   },
-  headerSubtitle: {
-    fontSize: FontSizes.small,
+
+  headerSub: {
+    fontSize: FontSizes.xs,
     color: Colors.textSecondary,
-    marginTop: 2,
   },
-  botAvatar: {
-    width: 40,
-    height: 40,
-    backgroundColor: '#51A2FF',
-    borderRadius: BorderRadius.round,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  botAvatarEmoji: {
-    fontSize: 20,
-  },
-  chatContainer: {
-    flex: 1,
-  },
-  messagesContainer: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
-    paddingBottom: Spacing.xl,
-  },
-  messageWrapper: {
-    marginBottom: Spacing.md,
-  },
-  botMessageContainer: {
-    alignItems: 'flex-start',
-  },
-  botMessage: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.medium,
-    borderBottomLeftRadius: 4,
+
+  messages: {
     padding: Spacing.md,
+    gap: 10,
+  },
+
+  bubbleWrap: { flexDirection: 'row' },
+  bubbleWrapUser: { justifyContent: 'flex-end' },
+  bubbleWrapBot: { justifyContent: 'flex-start' },
+
+  bubble: {
     maxWidth: '80%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    padding: 12,
+    borderRadius: Radius.lg,
   },
-  botMessageText: {
-    fontSize: FontSizes.medium,
-    color: Colors.textPrimary,
-    lineHeight: 20,
+
+  bubbleUser: {
+    backgroundColor: Colors.primary,
   },
-  stressBadge: {
+
+  bubbleBot: {
+    backgroundColor: Colors.surface,
+  },
+
+  textUser: { color: Colors.surface },
+  textBot: { color: Colors.textPrimary },
+
+  chipsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 4,
-    borderRadius: BorderRadius.small,
-    marginTop: Spacing.sm,
-    alignSelf: 'flex-start',
-  },
-  stressBadgeEmoji: {
-    fontSize: 14,
-    marginRight: 4,
-  },
-  stressBadgeText: {
-    fontSize: FontSizes.small,
-    color: Colors.white,
-    fontWeight: '600',
-  },
-  userMessageContainer: {
-    alignItems: 'flex-end',
-  },
-  userMessage: {
-    backgroundColor: '#51A2FF',
-    borderRadius: BorderRadius.medium,
-    borderBottomRightRadius: 4,
+    flexWrap: 'wrap',
     padding: Spacing.md,
-    maxWidth: '80%',
+    gap: 8,
   },
-  userMessageText: {
-    fontSize: FontSizes.medium,
-    color: Colors.white,
-    lineHeight: 20,
-  },
-  timestamp: {
-    fontSize: FontSizes.small - 1,
-    color: Colors.textLight,
-    marginTop: 4,
-    marginHorizontal: Spacing.sm,
-  },
-  quickActionsContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    gap: Spacing.sm,
-  },
-  quickActionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.medium,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.xs,
+
+  chip: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  quickActionIcon: {
-    fontSize: 16,
-    marginRight: 4,
+
+  chipText: {
+    fontSize: FontSizes.sm,
+    color: Colors.primary,
   },
-  quickActionLabel: {
-    fontSize: FontSizes.small,
-    color: Colors.textPrimary,
-    fontWeight: '500',
-  },
-  inputContainer: {
+
+  inputRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    backgroundColor: Colors.white,
+    padding: Spacing.md,
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    borderColor: Colors.border,
   },
+
   input: {
     flex: 1,
-    backgroundColor: Colors.background,
-    borderRadius: BorderRadius.large,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm + 2,
-    fontSize: FontSizes.medium,
-    color: Colors.textPrimary,
-    maxHeight: 100,
-    marginRight: Spacing.sm,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg,
+    padding: 12,
+    marginRight: 8,
   },
-  sendButton: {
+
+  sendBtn: {
     width: 44,
     height: 44,
-    backgroundColor: '#51A2FF',
-    borderRadius: BorderRadius.round,
+    borderRadius: 22,
+    backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  sendButtonDisabled: {
-    backgroundColor: Colors.border,
-  },
-  sendIcon: {
-    fontSize: 20,
-    color: Colors.white,
   },
 });

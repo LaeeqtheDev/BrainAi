@@ -3,68 +3,33 @@ const router = express.Router();
 const { auth, db } = require('../config/firebase');
 
 // POST /api/auth/signup - Create new user
+
 router.post('/signup', async (req, res) => {
   try {
-    const { email, password, name } = req.body;
+    const { email, name } = req.body;
+    if (!email || !name) return res.status(400).json({ success: false, error: 'email and name required' });
 
-    if (!email || !password || !name) {
-      return res.status(400).json({
-        success: false,
-        error: 'Email, password, and name are required',
-      });
+    // Find existing Firebase Auth user (created by client SDK)
+    let uid;
+    try {
+      const userRecord = await auth.getUserByEmail(email);
+      uid = userRecord.uid;
+    } catch {
+      return res.status(404).json({ success: false, error: 'Auth user not found yet' });
     }
 
-    // Create user in Firebase Auth
-    const userRecord = await auth.createUser({
-      email,
-      password,
-      displayName: name,
-    });
+    await db.collection('users').doc(uid).set({
+      userId: uid, email, name, profilePicture: null,
+      createdAt: new Date(), updatedAt: new Date(),
+      notifications: { dailyReminders: true, breathingReminders: true, weeklyInsights: true },
+      general: { language: 'English' },
+      privacy: { dataCollection: true, analytics: true },
+      security: { appLock: false, biometricEnabled: false },
+    }, { merge: true });
 
-    //  Create user document with DEFAULT SETTINGS
-    await db.collection('users').doc(userRecord.uid).set({
-      userId: userRecord.uid,
-      email,
-      name,
-      profilePicture: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      
-      //  DEFAULT SETTINGS
-      notifications: {
-        dailyReminders: true,
-        breathingReminders: true,
-        weeklyInsights: true,
-      },
-      general: {
-        language: 'English',
-      },
-      privacy: {
-        dataCollection: true,
-        analytics: true,
-      },
-      security: {
-        appLock: false,
-        biometricEnabled: false,
-      },
-    });
-
-    console.log(` User created: ${userRecord.uid}`);
-
-    res.json({
-      success: true,
-      data: {
-        userId: userRecord.uid,
-        email,
-        name,
-      },
-    });
-  } catch (error) {
-    console.error('Signup error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    res.json({ success: true, data: { userId: uid, email, name } });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 

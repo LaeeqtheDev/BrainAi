@@ -1,382 +1,194 @@
 import React, { useState } from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  StatusBar,
-  ScrollView,
-  SafeAreaView,
-  Switch,
-  Alert,
+  View, Text, ScrollView, StyleSheet, Switch, TouchableOpacity, Alert,
 } from 'react-native';
-import { Colors, Spacing, BorderRadius, FontSizes } from '../../constants/colors';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 
-export default function SettingsScreen({ navigation }) {
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [moodReminders, setMoodReminders] = useState(true);
-  const [appLockEnabled, setAppLockEnabled] = useState(false);
+import { signOut } from '../../services/authService';
+import ScreenHeader from '../../components/common/ScreenHeader';
+import { Colors, Spacing, Fonts, FontSizes, Radius, Shadow } from '../../config/theme';
 
-  const handleLogout = () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Logout', 
-          style: 'destructive',
-          onPress: () => {
-            // TODO: Clear session, navigate to login
-            Alert.alert('Logged Out', 'You have been logged out successfully');
-          }
-        },
-      ]
-    );
+export default function SettingsScreen() {
+  // Notifications
+  const [dailyReminders, setDailyReminders] = useState(true);
+  const [breathingReminders, setBreathingReminders] = useState(true);
+  const [weeklyInsights, setWeeklyInsights] = useState(false);
+  // Privacy & security
+  const [appLock, setAppLock] = useState(false);
+  const [analytics, setAnalytics] = useState(false);
+
+  const handleSignOut = () => {
+    Alert.alert('Sign out?', 'You can come back anytime.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign out', style: 'destructive', onPress: () => signOut() },
+    ]);
   };
 
-  const handleDeleteAccount = () => {
-    Alert.alert(
-      'Delete Account',
-      'This action cannot be undone. All your data will be permanently deleted.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Delete', 
-          style: 'destructive',
-          onPress: () => {
-            Alert.alert('Account Deleted', 'Your account has been deleted');
-          }
-        },
-      ]
-    );
-  };
-
-  const settingSections = [
-    {
-      title: 'Account',
-      items: [
-        { 
-          icon: '👤', 
-          label: 'Edit Profile', 
-          onPress: () => Alert.alert('Edit Profile', 'Coming soon!'),
-          type: 'navigate'
-        },
-        { 
-          icon: '🔐', 
-          label: 'Change Password', 
-          onPress: () => Alert.alert('Change Password', 'Coming soon!'),
-          type: 'navigate'
-        },
-      ],
-    },
-    {
-      title: 'Notifications',
-      items: [
-        { 
-          icon: '🔔', 
-          label: 'Push Notifications', 
-          value: notificationsEnabled,
-          onToggle: setNotificationsEnabled,
-          type: 'toggle'
-        },
-        { 
-          icon: '📊', 
-          label: 'Mood Reminders', 
-          value: moodReminders,
-          onToggle: setMoodReminders,
-          type: 'toggle'
-        },
-      ],
-    },
-    {
-      title: 'Privacy & Security',
-      items: [
-        { 
-          icon: '🔒', 
-          label: 'App Lock (Biometric)', 
-          value: appLockEnabled,
-          onToggle: setAppLockEnabled,
-          type: 'toggle'
-        },
-        { 
-          icon: '📄', 
-          label: 'Privacy Policy', 
-          onPress: () => Alert.alert('Privacy Policy', 'Coming soon!'),
-          type: 'navigate'
-        },
-        { 
-          icon: '📜', 
-          label: 'Terms of Service', 
-          onPress: () => Alert.alert('Terms of Service', 'Coming soon!'),
-          type: 'navigate'
-        },
-      ],
-    },
-    {
-      title: 'Data',
-      items: [
-        { 
-          icon: '📥', 
-          label: 'Export My Data', 
-          onPress: () => Alert.alert('Export Data', 'Your data will be sent to your email'),
-          type: 'navigate'
-        },
-        { 
-          icon: '🗑️', 
-          label: 'Clear All Data', 
-          onPress: () => Alert.alert('Clear Data', 'All local data will be cleared'),
-          type: 'navigate',
-          danger: true
-        },
-      ],
-    },
-    {
-      title: 'Support',
-      items: [
-        { 
-          icon: '❓', 
-          label: 'Help & Support', 
-          onPress: () => Alert.alert('Help', 'Contact: support@mentalhealth.com'),
-          type: 'navigate'
-        },
-        { 
-          icon: '⭐', 
-          label: 'Rate App', 
-          onPress: () => Alert.alert('Rate Us', 'Thank you for your support!'),
-          type: 'navigate'
-        },
-        { 
-          icon: '📧', 
-          label: 'Send Feedback', 
-          onPress: () => Alert.alert('Feedback', 'Coming soon!'),
-          type: 'navigate'
-        },
-      ],
-    },
-  ];
+  const placeholder = (label) => Alert.alert(label, 'Coming soon.');
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <ScreenHeader eyebrow="Settings" title="Adjust the room." />
 
-      {/* Header */}
-      <View style={styles.header}>
-      
-        <Text style={styles.headerTitle}>Settings</Text>
-        <View style={styles.placeholder} />
-      </View>
-
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Profile Section */}
-        <View style={styles.profileSection}>
-          <View style={styles.profileAvatar}>
-            <Text style={styles.profileAvatarText}>U</Text>
+        {/* Privacy banner */}
+        <View style={styles.banner}>
+          <View style={styles.bannerIcon}>
+            <Ionicons name="shield-checkmark" size={20} color={Colors.primary} />
           </View>
-          <Text style={styles.profileName}>User Name</Text>
-          <Text style={styles.profileEmail}>user@example.com</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.bannerTitle}>Your privacy matters</Text>
+            <Text style={styles.bannerText}>
+              No judgment. Your data stays secure and private. Encrypted in transit.
+            </Text>
+          </View>
         </View>
 
-        {/* Settings Sections */}
-        {settingSections.map((section, sectionIndex) => (
-          <View key={sectionIndex} style={styles.section}>
-            <Text style={styles.sectionTitle}>{section.title}</Text>
-            <View style={styles.sectionItems}>
-              {section.items.map((item, itemIndex) => (
-                <TouchableOpacity
-                  key={itemIndex}
-                  style={[
-                    styles.settingItem,
-                    itemIndex === section.items.length - 1 && styles.settingItemLast
-                  ]}
-                  onPress={item.type === 'navigate' ? item.onPress : null}
-                  activeOpacity={item.type === 'navigate' ? 0.7 : 1}
-                >
-                  <View style={styles.settingItemLeft}>
-                    <Text style={styles.settingIcon}>{item.icon}</Text>
-                    <Text style={[
-                      styles.settingLabel,
-                      item.danger && styles.settingLabelDanger
-                    ]}>
-                      {item.label}
-                    </Text>
-                  </View>
-                  {item.type === 'toggle' ? (
-                    <Switch
-                      value={item.value}
-                      onValueChange={item.onToggle}
-                      trackColor={{ false: '#d1d5db', true: '#4a6741' }}
-                      thumbColor={Colors.white}
-                    />
-                  ) : (
-                    <Text style={styles.settingArrow}>›</Text>
-                  )}
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        ))}
+        {/* Notifications */}
+        <Section title="Notifications">
+          <SettingToggle
+            icon="alarm-outline" tint="#E2EAE3"
+            label="Daily reminders" sub="Gentle check-ins"
+            value={dailyReminders} onValueChange={setDailyReminders}
+          />
+          <SettingToggle
+            icon="leaf-outline" tint="#F5DECF"
+            label="Breathing reminders" sub="Take mindful breaks"
+            value={breathingReminders} onValueChange={setBreathingReminders}
+          />
+          <SettingToggle
+            icon="stats-chart-outline" tint="#DCEAE5"
+            label="Weekly insights" sub="Mood summary reports"
+            value={weeklyInsights} onValueChange={setWeeklyInsights}
+            isLast
+          />
+        </Section>
 
-        {/* Logout Button */}
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Text style={styles.logoutButtonText}>Logout</Text>
-        </TouchableOpacity>
+        {/* General */}
+        <Section title="General">
+          <LinkRow icon="globe-outline" tint="#E8E1F0" label="Language" sub="English" onPress={() => placeholder('Language')} />
+          <LinkRow icon="help-circle-outline" tint="#EFE6D6" label="Help & Support" sub="FAQs and contact" onPress={() => placeholder('Help & Support')} isLast />
+        </Section>
 
-        {/* Delete Account */}
-        <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteAccount}>
-          <Text style={styles.deleteButtonText}>Delete Account</Text>
-        </TouchableOpacity>
+        {/* Privacy & Security */}
+        <Section title="Privacy & Security">
+          <LinkRow icon="document-text-outline" tint="#E2EAE3" label="Privacy Policy" sub="How we protect your data" onPress={() => placeholder('Privacy Policy')} />
+          <LinkRow icon="server-outline" tint="#F5DECF" label="Data & Storage" sub="Manage your information" onPress={() => placeholder('Data & Storage')} />
+          <SettingToggle
+            icon="lock-closed-outline" tint="#E8E1F0"
+            label="App Lock" sub="Secure with biometrics"
+            value={appLock} onValueChange={(v) => {
+              if (v) Alert.alert('Coming soon', 'Biometric lock will be available in a future update.');
+              else setAppLock(false);
+            }}
+          />
+          <SettingToggle
+            icon="bar-chart-outline" tint="#DCEAE5"
+            label="Anonymous analytics" sub="Help improve the app"
+            value={analytics} onValueChange={setAnalytics}
+            isLast
+          />
+        </Section>
 
-        {/* Version */}
-        <Text style={styles.versionText}>Version 1.0.0</Text>
+        {/* Account */}
+        <Section title="Account">
+          <LinkRow icon="mail-outline" tint="#EFE6D6" label="Contact support" onPress={() => placeholder('Contact')} />
+          <LinkRow icon="log-out-outline" tint="#F5DECF" label="Sign out" onPress={handleSignOut} danger isLast />
+        </Section>
+
+        <Text style={styles.footer}>Stillwater · AI-powered mental wellness</Text>
+        <Text style={styles.version}>v1.0.0</Text>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+function Section({ title, children }) {
+  return (
+    <View style={{ marginBottom: Spacing.lg }}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={styles.card}>{children}</View>
+    </View>
+  );
+}
+
+function SettingToggle({ icon, tint, label, sub, value, onValueChange, isLast }) {
+  return (
+    <View style={[styles.row, isLast && styles.rowLast]}>
+      <View style={[styles.rowIcon, { backgroundColor: tint }]}>
+        <Ionicons name={icon} size={18} color={Colors.primary} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.rowLabel}>{label}</Text>
+        {sub ? <Text style={styles.rowSub}>{sub}</Text> : null}
+      </View>
+      <Switch
+        value={value} onValueChange={onValueChange}
+        trackColor={{ false: Colors.border, true: Colors.primarySoft }}
+        thumbColor={Colors.surface}
+      />
+    </View>
+  );
+}
+
+function LinkRow({ icon, tint, label, sub, onPress, danger, isLast }) {
+  return (
+    <TouchableOpacity activeOpacity={0.7} onPress={onPress} style={[styles.row, isLast && styles.rowLast]}>
+      <View style={[styles.rowIcon, { backgroundColor: tint }]}>
+        <Ionicons name={icon} size={18} color={danger ? Colors.error : Colors.primary} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.rowLabel, danger && { color: Colors.error }]}>{label}</Text>
+        {sub ? <Text style={styles.rowSub}>{sub}</Text> : null}
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+    </TouchableOpacity>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
+  container: { flex: 1, backgroundColor: Colors.background },
+  scroll: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.lg, paddingBottom: Spacing.xxl },
+  banner: {
+    flexDirection: 'row', gap: Spacing.md, alignItems: 'center',
+    backgroundColor: Colors.surfaceMuted, padding: Spacing.md,
+    borderRadius: Radius.lg, marginBottom: Spacing.lg,
   },
-  header: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.md + 4,
-    backgroundColor: Colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+  bannerIcon: {
+    width: 40, height: 40, borderRadius: Radius.md,
+    backgroundColor: '#E2EAE3',
+    alignItems: 'center', justifyContent: 'center',
   },
-  backButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backIcon: {
-    fontSize: 24,
-    color: Colors.textPrimary,
-  },
-  headerTitle: {
-    fontSize: FontSizes.xlarge,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-  },
-  placeholder: {
-    width: 40,
-  },
-  scrollContent: {
-    paddingBottom: Spacing.xxl,
-  },
-  profileSection: {
-    alignItems: 'center',
-    paddingVertical: Spacing.xl,
-    backgroundColor: Colors.white,
-    marginBottom: Spacing.md,
-  },
-  profileAvatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#4a6741',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.md,
-  },
-  profileAvatarText: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: Colors.white,
-  },
-  profileName: {
-    fontSize: FontSizes.xlarge,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    marginBottom: 4,
-  },
-  profileEmail: {
-    fontSize: FontSizes.medium,
-    color: Colors.textSecondary,
-  },
-  section: {
-    marginBottom: Spacing.md,
-  },
+  bannerTitle: { fontSize: FontSizes.md, fontFamily: Fonts.bodyMedium, color: Colors.textPrimary, marginBottom: 2 },
+  bannerText: { fontSize: FontSizes.sm, fontFamily: Fonts.body, color: Colors.textSecondary, lineHeight: 18 },
   sectionTitle: {
-    fontSize: FontSizes.small,
-    fontWeight: '600',
-    color: Colors.textSecondary,
-    textTransform: 'uppercase',
-    paddingHorizontal: Spacing.lg,
-    marginBottom: Spacing.sm,
+    fontSize: FontSizes.xs, fontFamily: Fonts.bodyMedium,
+    color: Colors.textSecondary, letterSpacing: 1.6,
+    textTransform: 'uppercase', marginBottom: Spacing.sm, marginLeft: 4,
   },
-  sectionItems: {
-    backgroundColor: Colors.white,
+  card: {
+    backgroundColor: Colors.surface, borderRadius: Radius.lg,
+    overflow: 'hidden', ...Shadow.soft,
   },
-  settingItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+  row: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
+    paddingVertical: Spacing.md, paddingHorizontal: Spacing.md,
+    borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
-  settingItemLast: {
-    borderBottomWidth: 0,
+  rowLast: { borderBottomWidth: 0 },
+  rowIcon: {
+    width: 36, height: 36, borderRadius: Radius.md,
+    alignItems: 'center', justifyContent: 'center',
   },
-  settingItemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
+  rowLabel: { fontSize: FontSizes.md, fontFamily: Fonts.body, color: Colors.textPrimary },
+  rowSub: { fontSize: FontSizes.xs, fontFamily: Fonts.body, color: Colors.textSecondary, marginTop: 2 },
+  footer: {
+    fontSize: FontSizes.sm, fontFamily: Fonts.displayItalic,
+    color: Colors.textSecondary, textAlign: 'center', marginTop: Spacing.md,
   },
-  settingIcon: {
-    fontSize: 20,
-    marginRight: Spacing.md,
-    width: 24,
-  },
-  settingLabel: {
-    fontSize: FontSizes.medium,
-    color: Colors.textPrimary,
-  },
-  settingLabelDanger: {
-    color: '#ef5350',
-  },
-  settingArrow: {
-    fontSize: 24,
-    color: Colors.textLight,
-  },
-  logoutButton: {
-    marginHorizontal: Spacing.lg,
-    marginTop: Spacing.lg,
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.medium,
-    paddingVertical: Spacing.md,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#4a6741',
-  },
-  logoutButtonText: {
-    fontSize: FontSizes.medium,
-    fontWeight: '600',
-    color: '#4a6741',
-  },
-  deleteButton: {
-    marginHorizontal: Spacing.lg,
-    marginTop: Spacing.md,
-    paddingVertical: Spacing.sm,
-    alignItems: 'center',
-  },
-  deleteButtonText: {
-    fontSize: FontSizes.small,
-    color: '#ef5350',
-  },
-  versionText: {
-    fontSize: FontSizes.small,
-    color: Colors.textLight,
-    textAlign: 'center',
-    marginTop: Spacing.lg,
+  version: {
+    fontSize: FontSizes.xs, fontFamily: Fonts.body,
+    color: Colors.textMuted, textAlign: 'center', marginTop: 4,
   },
 });

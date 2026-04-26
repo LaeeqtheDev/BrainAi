@@ -1,380 +1,336 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  StatusBar,
-  ScrollView,
-  SafeAreaView,
-  Alert,
-  Image,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, Alert,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Spacing, BorderRadius, FontSizes } from '../../constants/colors';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 
-export default function HomeScreen({ navigation }) {
-  const [selectedMood, setSelectedMood] = useState(null);
+import { useAuth } from '../../context/AuthContext';
+import { getRecentMoods, MOODS, saveMood } from '../../services/moodService';
+import { getJournalEntries } from '../../services/journalService';
+import { getDailyAffirmation } from '../../services/quoteService';
 
-  const handleMoodSelect = (mood) => {
-    setSelectedMood(mood);
-    Alert.alert('Mood Logged', `You selected: ${mood}`);
+import { Colors, Spacing, FontSizes, Fonts, Radius, Shadow } from '../../config/theme';
+
+const greeting = () => {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 18) return 'Good afternoon';
+  return 'Good evening';
+};
+
+const FEATURE_CARDS = [
+  { key: 'Chatbot',        title: 'AI companion', sub: 'Talk it through', icon: 'chatbubbles-outline', tint: '#E2EAE3' },
+  { key: 'Mood',           title: 'Mood tracker', sub: 'See your weather', icon: 'pulse-outline', tint: '#F5DECF' },
+  { key: 'Journal',        title: 'Journal',      sub: 'Pages of you',     icon: 'book-outline', tint: '#EFE6D6' },
+  { key: 'Breathing',      title: 'Breathing',    sub: 'Calm your mind',   icon: 'leaf-outline', tint: '#DCEAE5' },
+  { key: 'QuranicHealing', title: 'Quranic healing', sub: 'Find solace', icon: 'sparkles-outline', tint: '#E8E1F0', wide: true },
+];
+
+export default function HomeScreen() {
+  const { user } = useAuth();
+  const navigation = useNavigation();
+
+  const [latestMood, setLatestMood] = useState(null);
+  const [journalCount, setJournalCount] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [savingMood, setSavingMood] = useState(false);
+
+  // ✅ backend affirmation
+  const [affirmation, setAffirmation] = useState("Take a breath. You're here.");
+
+  const firstName = (user?.displayName || 'friend').split(' ')[0];
+
+  const load = useCallback(async () => {
+    try {
+      const [moods, entries, quote] = await Promise.all([
+        getRecentMoods(1),
+        getJournalEntries(),
+        getDailyAffirmation(),
+      ]);
+
+      setLatestMood(moods[0] || null);
+      setJournalCount(entries.length);
+      setAffirmation(quote || "Take a breath. You're here.");
+    } catch (err) {
+      console.log('Home load error:', err);
+    }
+  }, []);
+
+  useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
   };
 
-  const moodButtons = [
-    { emoji: '😊', label: 'Happy', color: '#FFE8E8' },
-    { emoji: '😌', label: 'Calm', color: '#E3F2FD' },
-    { emoji: '😐', label: 'Neutral', color: '#FFF9E6' },
-    { emoji: '😰', label: 'Stressed', color: '#FFE8D6' },
-    { emoji: '😟', label: 'Anxious', color: '#FFE8E8' },
-  ];
+  const quickLogMood = async (moodKey) => {
+    if (savingMood) return;
+    setSavingMood(true);
 
-  const shortcuts = [
-    { 
-      icon: require('../../assets/Container (1).png'),
-      title: 'AI Chatbot', 
-      subtitle: 'Talk to your support companion',
-      screen: 'Chatbot', 
-      bgColor: '#E3F2FD',
-    },
-    { 
-      icon: require('../../assets/Container (2).png'),
-      title: 'Mood Tracker', 
-      subtitle: 'See your emotional journey',
-      screen: 'MoodTracker', 
-      bgColor: '#E8F5E9',
-    },
-    { 
-      icon: require('../../assets/Container (3).png'),
-      title: 'Journal', 
-      subtitle: 'Express your thoughts',
-      screen: 'Journal', 
-      bgColor: '#F3E5F5',
-    },
-    { 
-      icon: require('../../assets/Container (4).png'),
-      title: 'Breathing', 
-      subtitle: 'Calm your mind',
-      screen: 'Breathing', 
-      bgColor: '#FCE4EC',
-    },
-  ];
+    const res = await saveMood({ moodKey, note: '' });
 
-  const handleShortcutPress = (screen) => {
-    if (screen === 'Chatbot') {
-      navigation.navigate('Chatbot');
-    } else if (screen === 'MoodTracker') {
-      navigation.navigate('MoodTab');
-    } else if (screen === 'Journal') {
-      navigation.navigate('JournalTab');
-    } else if (screen === 'Breathing') {
-      navigation.navigate('Breathing');
+    setSavingMood(false);
+
+    if (res.success) {
+      load();
+      Alert.alert('Logged', "We've noted how you're feeling. Want to write a line?", [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'Write', onPress: () => navigation.navigate('Mood') },
+      ]);
     }
   };
 
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good Morning';
-    if (hour < 17) return 'Good Afternoon';
-    return 'Good Evening';
+  const moodMeta = latestMood ? MOODS.find((m) => m.key === latestMood.moodKey) : null;
+
+  const navTo = (key) => {
+    navigation.navigate(key);
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#00ACC1" />
-      
+    <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
+        }
       >
-        {/* Gradient Header */}
-        <LinearGradient
-  colors={['#0277BD', '#00ACC1', '#4DD0E1']}
-  locations={[0, 0.5, 1]}
-  start={{ x: 0, y: 0 }}
-  end={{ x: 1, y: 1 }}
-  style={styles.headerGradient}
->
-          <View style={styles.headerContent}>
-            <View>
-              <Text style={styles.greeting}>{getGreeting()}</Text>
-              <Text style={styles.welcomeText}>Welcome back!</Text>
-            </View>
-            <TouchableOpacity style={styles.notificationButton}>
-              <Text style={styles.notificationIcon}>🔔</Text>
-            </TouchableOpacity>
-          </View>
-        </LinearGradient>
+        <Text style={styles.greeting}>{greeting()},</Text>
+        <Text style={styles.name}>{firstName}.</Text>
 
-        {/* Mood Check-in Card */}
+        {/* Quick mood */}
         <View style={styles.moodCard}>
-          <View style={styles.moodContainer}>
-            {moodButtons.map((mood, index) => (
+          <Text style={styles.moodCardTitle}>How are you feeling?</Text>
+          <View style={styles.moodRow}>
+            {MOODS.map((m) => (
               <TouchableOpacity
-                key={index}
-                style={[
-                  styles.moodButton,
-                  { backgroundColor: mood.color },
-                  selectedMood === mood.label && styles.moodButtonSelected
-                ]}
-                onPress={() => handleMoodSelect(mood.label)}
-                activeOpacity={0.7}
+                key={m.key}
+                onPress={() => quickLogMood(m.key)}
+                style={styles.moodPick}
+                activeOpacity={0.85}
+                disabled={savingMood}
               >
-                <Text style={styles.moodEmoji}>{mood.emoji}</Text>
-                <Text style={styles.moodLabel}>{mood.label}</Text>
+                <Text style={styles.moodPickEmoji}>{m.emoji}</Text>
+                <Text style={styles.moodPickLabel}>{m.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
-        {/* Daily Reminder */}
-        <View style={styles.section}>
-          <View style={styles.reminderCard}>
-            <View style={styles.reminderIconContainer}>
-              <Text style={styles.reminderIcon}>💡</Text>
-            </View>
-            <View style={styles.reminderContent}>
-              <Text style={styles.reminderTitle}>Daily Reminder</Text>
-              <Text style={styles.reminderText}>
-                "Peace comes from within. Do not seek it without." Take a moment to breathe deeply.
-              </Text>
-            </View>
+        {/* Daily reminder (BACKEND POWERED) */}
+        <View style={styles.reminder}>
+          <Text style={styles.reminderLabel}>A note for today</Text>
+          <Text style={styles.reminderText}>"{affirmation}"</Text>
+        </View>
+
+        {/* Feature grid */}
+        <Text style={styles.sectionTitle}>Explore</Text>
+        <View style={styles.grid}>
+          {FEATURE_CARDS.map((f) => (
+            <TouchableOpacity
+              key={f.key}
+              activeOpacity={0.85}
+              onPress={() => navTo(f.key)}
+              style={[styles.featureCard, f.wide && styles.featureCardWide]}
+            >
+              <View style={[styles.featureIcon, { backgroundColor: f.tint }]}>
+                <Ionicons name={f.icon} size={22} color={Colors.primary} />
+              </View>
+              <Text style={styles.featureTitle}>{f.title}</Text>
+              <Text style={styles.featureSub}>{f.sub}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Stats */}
+        <Text style={styles.sectionTitle}>At a glance</Text>
+        <View style={styles.statRow}>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{moodMeta ? moodMeta.emoji : '—'}</Text>
+            <Text style={styles.statLabel}>Last mood</Text>
+            <Text style={styles.statSub}>{moodMeta ? moodMeta.label : 'Not yet logged'}</Text>
+          </View>
+
+          <View style={styles.statCard}>
+            <Text style={[styles.statValue, { fontFamily: Fonts.display }]}>{journalCount}</Text>
+            <Text style={styles.statLabel}>Entries</Text>
+            <Text style={styles.statSub}>
+              {journalCount === 1 ? 'reflection' : 'reflections'}
+            </Text>
           </View>
         </View>
 
-        {/* Quick Actions */}
-        <View style={styles.section}>
-          <View style={styles.shortcutsGrid}>
-            {shortcuts.map((shortcut, index) => (
-              <TouchableOpacity
-                key={index}
-                style={[styles.shortcutCard, { backgroundColor: shortcut.bgColor }]}
-                onPress={() => handleShortcutPress(shortcut.screen)}
-                activeOpacity={0.8}
-              >
-                <View style={styles.shortcutIconBox}>
-                  <Image 
-                    source={shortcut.icon} 
-                    style={styles.shortcutIconImage}
-                    resizeMode="contain"
-                  />
-                </View>
-                <Text style={styles.shortcutTitle}>{shortcut.title}</Text>
-                <Text style={styles.shortcutSubtitle}>{shortcut.subtitle}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* Quranic Healing */}
-        <View style={styles.section}>
-          <TouchableOpacity 
-            style={styles.quranCard}
-            activeOpacity={0.8}
-            onPress={() => navigation.navigate('Quran')}
-          >
-            <View style={styles.quranIconBox}>
-              <Image 
-                source={require('../../assets/Container (5).png')} 
-                style={styles.quranIconImage}
-                resizeMode="contain"
-              />
-            </View>
-            <View style={styles.quranContent}>
-              <Text style={styles.quranTitle}>Quranic Healing</Text>
-              <Text style={styles.quranSubtitle}>Find peace through divine verses</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F5F5',
+  container: { flex: 1, backgroundColor: Colors.background },
+  scroll: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.lg, paddingBottom: Spacing.xxl },
+
+  greeting: {
+    fontSize: FontSizes.lg,
+    fontFamily: Fonts.body,
+    color: Colors.textSecondary,
+    marginTop: Spacing.md,
   },
-  scrollContent: {
-    paddingBottom: 100,
+
+  name: {
+    fontSize: 44,
+    fontFamily: Fonts.display,
+    color: Colors.textPrimary,
+    letterSpacing: -0.5,
+    marginBottom: Spacing.lg,
   },
-  headerGradient: {
-    paddingTop: 20,
-    paddingBottom: 85,
-    paddingHorizontal: 20,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+
+  moodCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    ...Shadow.soft,
   },
-  headerContent: {
+
+  moodCardTitle: {
+    fontSize: FontSizes.md,
+    fontFamily: Fonts.bodyMedium,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.md,
+  },
+
+  moodRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginTop: 20,
+    gap: 4,
   },
-  greeting: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.9)',
+
+  moodPick: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+
+  moodPickEmoji: {
+    fontSize: 28,
     marginBottom: 4,
   },
-  welcomeText: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: Colors.white,
+
+  moodPickLabel: {
+    fontSize: 11,
+    fontFamily: Fonts.body,
+    color: Colors.textSecondary,
   },
-  notificationButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
+
+  reminder: {
+    backgroundColor: Colors.surfaceMuted,
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
+    marginBottom: Spacing.xl,
   },
-  notificationIcon: {
-    fontSize: 20,
-  },
-  moodCard: {
-    backgroundColor: Colors.white,
-    marginHorizontal: 20,
-    marginTop: -60,
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 5,
-  },
-  moodContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  moodButton: {
-    width: '18%',
-    aspectRatio: 0.85,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-  },
-  moodButtonSelected: {
-    borderWidth: 0,
-    borderColor: '#00ACC1',
-  },
-  moodEmoji: {
-    fontSize: 20,
+
+  reminderLabel: {
+    fontSize: FontSizes.xs,
+    fontFamily: Fonts.bodyMedium,
+    color: Colors.accent,
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
     marginBottom: 8,
   },
-  moodLabel: {
-    fontSize: 12,
-    color: '#424242',
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  section: {
-    paddingHorizontal: 20,
-    marginTop: 20,
-  },
-  reminderCard: {
-    backgroundColor: '#E0F7FA',
-    borderRadius: 20,
-    padding: 20,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  reminderIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: Colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  reminderIcon: {
-    fontSize: 24,
-  },
-  reminderContent: {
-    flex: 1,
-  },
-  reminderTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#00838F',
-    marginBottom: 4,
-  },
+
   reminderText: {
-    fontSize: 14,
-    color: '#00695C',
-    lineHeight: 20,
+    fontSize: FontSizes.lg,
+    fontFamily: Fonts.displayItalic,
+    color: Colors.textPrimary,
+    lineHeight: 26,
   },
-  shortcutsGrid: {
+
+  sectionTitle: {
+    fontSize: FontSizes.xs,
+    fontFamily: Fonts.bodyMedium,
+    color: Colors.textSecondary,
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
+    marginBottom: Spacing.md,
+    marginTop: Spacing.sm,
+  },
+
+  grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    gap: Spacing.sm,
+    marginBottom: Spacing.xl,
   },
-  shortcutCard: {
-    width: '48%',
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 16,
-    minHeight: 160,
+
+  featureCard: {
+    flexBasis: '48%',
+    flexGrow: 1,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    ...Shadow.soft,
   },
-  shortcutIconBox: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
+
+  featureCardWide: {
+    flexBasis: '100%',
+  },
+
+  featureIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
-    backgroundColor: 'transparent',
+    marginBottom: Spacing.sm,
   },
-  shortcutIconImage: {
-    width: 56,
-    height: 56,
+
+  featureTitle: {
+    fontSize: FontSizes.md,
+    fontFamily: Fonts.bodyMedium,
+    color: Colors.textPrimary,
+    marginBottom: 2,
   },
-  shortcutTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#212121',
-    marginBottom: 4,
+
+  featureSub: {
+    fontSize: FontSizes.sm,
+    fontFamily: Fonts.body,
+    color: Colors.textSecondary,
   },
-  shortcutSubtitle: {
-    fontSize: 13,
-    color: '#757575',
-    lineHeight: 18,
-  },
-  quranCard: {
-    backgroundColor: '#F3E5F5',
-    borderRadius: 20,
-    padding: 20,
+
+  statRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    gap: Spacing.md,
+    marginTop: Spacing.sm,
   },
-  quranIconBox: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-    backgroundColor: 'transparent',
-  },
-  quranIconImage: {
-    width: 56,
-    height: 56,
-  },
-  quranContent: {
+
+  statCard: {
     flex: 1,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    ...Shadow.soft,
   },
-  quranTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#212121',
+
+  statValue: {
+    fontSize: 32,
     marginBottom: 4,
   },
-  quranSubtitle: {
-    fontSize: 14,
-    color: '#757575',
+
+  statLabel: {
+    fontSize: FontSizes.xs,
+    fontFamily: Fonts.bodyMedium,
+    color: Colors.textSecondary,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+  },
+
+  statSub: {
+    fontSize: FontSizes.sm,
+    fontFamily: Fonts.body,
+    color: Colors.textMuted,
+    marginTop: 2,
   },
 });

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../config/firebase');
+const { verifyToken } = require('../middleware/authMiddleware');
 const PDFDocument = require('pdfkit');
 const Groq = require('groq-sdk');
 
@@ -8,20 +9,27 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
-// POST /api/journal/create - Create new journal entry
+// 🔐 Protect all routes
+router.use(verifyToken);
+
+/* =========================
+   CREATE JOURNAL
+========================= */
 router.post('/create', async (req, res) => {
   try {
-    const { userId, content, emotionTag } = req.body;
+    const { userId } = req.user;
+    const { title, content, emotionTag } = req.body;
 
-    if (!userId || !content) {
+    if (!content) {
       return res.status(400).json({
         success: false,
-        error: 'userId and content are required',
+        error: 'content is required',
       });
     }
 
     const journalData = {
       userId,
+      title: title || 'Untitled',
       content,
       emotionTag: emotionTag || null,
       createdAt: new Date(),
@@ -29,8 +37,6 @@ router.post('/create', async (req, res) => {
     };
 
     const docRef = await db.collection('journals').add(journalData);
-
-    console.log(`📔 Journal created: ${docRef.id} for user ${userId}`);
 
     res.json({
       success: true,
@@ -40,33 +46,34 @@ router.post('/create', async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Journal create error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// GET /api/journal/list/:userId - Get all journal entries
-router.get('/list/:userId', async (req, res) => {
+/* =========================
+   LIST JOURNALS
+========================= */
+router.get('/list', async (req, res) => {
   try {
-    const { userId } = req.params;
-    const { limit = 20 } = req.query;
+    const { userId } = req.user;
+    const limit = parseInt(req.query.limit) || 50;
 
     const snapshot = await db
       .collection('journals')
       .where('userId', '==', userId)
       .orderBy('createdAt', 'desc')
-      .limit(parseInt(limit))
+      .limit(limit)
       .get();
 
-    const journals = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt.toDate().toISOString(),
-      updatedAt: doc.data().updatedAt.toDate().toISOString(),
-    }));
+    const journals = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        createdAt: data.createdAt?.toDate?.().toISOString(),
+        updatedAt: data.updatedAt?.toDate?.().toISOString(),
+      };
+    });
 
     res.json({
       success: true,
@@ -74,193 +81,168 @@ router.get('/list/:userId', async (req, res) => {
       count: journals.length,
     });
   } catch (error) {
-    console.error('Journal list error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// GET /api/journal/:journalId - Get single journal entry
+/* =========================
+   GET SINGLE JOURNAL
+========================= */
 router.get('/:journalId', async (req, res) => {
   try {
+    const { userId } = req.user;
     const { journalId } = req.params;
 
     const doc = await db.collection('journals').doc(journalId).get();
 
     if (!doc.exists) {
-      return res.status(404).json({
-        success: false,
-        error: 'Journal entry not found',
-      });
+      return res.status(404).json({ success: false, error: 'Not found' });
     }
 
-    const journalData = doc.data();
+    const data = doc.data();
+
+    if (data.userId !== userId) {
+      return res.status(403).json({ success: false, error: 'Forbidden' });
+    }
 
     res.json({
       success: true,
       data: {
         id: doc.id,
-        ...journalData,
-        createdAt: journalData.createdAt.toDate().toISOString(),
-        updatedAt: journalData.updatedAt.toDate().toISOString(),
+        ...data,
+        createdAt: data.createdAt.toDate().toISOString(),
+        updatedAt: data.updatedAt.toDate().toISOString(),
       },
     });
   } catch (error) {
-    console.error('Journal get error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// PUT /api/journal/:journalId - Update journal entry
+/* =========================
+   UPDATE JOURNAL
+========================= */
 router.put('/:journalId', async (req, res) => {
   try {
+    const { userId } = req.user;
     const { journalId } = req.params;
-    const { content, emotionTag } = req.body;
+    const { title, content, emotionTag } = req.body;
 
-    const updateData = {
-      updatedAt: new Date(),
-    };
+    const docRef = db.collection('journals').doc(journalId);
+    const doc = await docRef.get();
 
-    if (content) updateData.content = content;
-    if (emotionTag) updateData.emotionTag = emotionTag;
+    if (!doc.exists) {
+      return res.status(404).json({ success: false, error: 'Not found' });
+    }
 
-    await db.collection('journals').doc(journalId).update(updateData);
+    if (doc.data().userId !== userId) {
+      return res.status(403).json({ success: false, error: 'Forbidden' });
+    }
 
-    res.json({
-      success: true,
-      message: 'Journal entry updated',
-    });
+    const update = { updatedAt: new Date() };
+    if (title) update.title = title;
+    if (content) update.content = content;
+    if (emotionTag) update.emotionTag = emotionTag;
+
+    await docRef.update(update);
+
+    res.json({ success: true });
   } catch (error) {
-    console.error('Journal update error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// DELETE /api/journal/:journalId - Delete journal entry
+/* =========================
+   DELETE JOURNAL
+========================= */
 router.delete('/:journalId', async (req, res) => {
   try {
+    const { userId } = req.user;
     const { journalId } = req.params;
 
-    await db.collection('journals').doc(journalId).delete();
+    const docRef = db.collection('journals').doc(journalId);
+    const doc = await docRef.get();
 
-    console.log(`🗑️ Journal deleted: ${journalId}`);
+    if (!doc.exists) {
+      return res.status(404).json({ success: false, error: 'Not found' });
+    }
 
-    res.json({
-      success: true,
-      message: 'Journal entry deleted',
-    });
+    if (doc.data().userId !== userId) {
+      return res.status(403).json({ success: false, error: 'Forbidden' });
+    }
+
+    await docRef.delete();
+
+    res.json({ success: true });
   } catch (error) {
-    console.error('Journal delete error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// GET /api/journal/search/:userId - Search and filter journals
-router.get('/search/:userId', async (req, res) => {
+/* =========================
+   SEARCH JOURNALS
+========================= */
+router.get('/search', async (req, res) => {
   try {
-    const { userId } = req.params;
-    const { keyword, emotion, startDate, endDate } = req.query;
+    const { userId } = req.user;
+    const { keyword, emotion } = req.query;
 
     let query = db.collection('journals').where('userId', '==', userId);
 
-    // Filter by emotion tag
     if (emotion) {
       query = query.where('emotionTag', '==', emotion);
     }
 
-    // Filter by date range
-    if (startDate) {
-      query = query.where('createdAt', '>=', new Date(startDate));
-    }
-    if (endDate) {
-      query = query.where('createdAt', '<=', new Date(endDate));
-    }
-
     const snapshot = await query.orderBy('createdAt', 'desc').get();
 
-    let journals = snapshot.docs.map(doc => ({
+    let results = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
-      createdAt: doc.data().createdAt.toDate().toISOString(),
     }));
 
-    // Search by keyword in content
     if (keyword) {
-      journals = journals.filter(journal =>
-        journal.content.toLowerCase().includes(keyword.toLowerCase())
+      results = results.filter(j =>
+        j.content.toLowerCase().includes(keyword.toLowerCase())
       );
     }
 
     res.json({
       success: true,
-      data: journals,
-      count: journals.length,
+      data: results,
+      count: results.length,
     });
   } catch (error) {
-    console.error('Journal search error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// GET /api/journal/prompts/:emotion - Get AI journal prompts based on emotion
+/* =========================
+   JOURNAL PROMPTS (AI)
+========================= */
 router.get('/prompts/:emotion', async (req, res) => {
   try {
     const { emotion } = req.params;
 
-    const fallbackPrompts = {
+    const fallback = {
       stressed: [
         'What is causing you the most stress right now?',
-        'What would help you feel more calm today?',
-        'What can you control in this situation?',
+        'What can you control today?',
+        'What would help you feel calmer?'
       ],
       anxious: [
-        'What are you worried about right now?',
-        'What evidence do you have that things will be okay?',
-        'What would you tell a friend in this situation?',
+        'What are you worried about?',
+        'Is this fear factual or imagined?',
+        'What would stability look like today?'
       ],
       sad: [
-        'What made you feel this way?',
-        'What usually helps you feel better?',
-        'What are you grateful for today, even if small?',
-      ],
-      happy: [
-        'What made you smile today?',
-        'Who or what are you grateful for?',
-        'How can you spread this positivity?',
-      ],
-      overwhelmed: [
-        'What feels like too much right now?',
-        'What is one small thing you can do today?',
-        'Who can you reach out to for support?',
-      ],
-      angry: [
-        'What triggered this anger?',
-        'How can you express this in a healthy way?',
-        'What would help you feel calmer?',
-      ],
-      calm: [
-        'What brought you peace today?',
-        'How can you maintain this sense of calm?',
-        'What are you grateful for in this moment?',
+        'What is weighing on you right now?',
+        'What do you need emotionally?',
+        'What brought you comfort before?'
       ],
       neutral: [
-        'How are you really feeling beneath the surface?',
-        'What would make today meaningful?',
-        'What do you need right now?',
+        'How are you really feeling?',
+        'What do you need today?',
+        'What matters most right now?'
       ],
     };
 
@@ -269,57 +251,47 @@ router.get('/prompts/:emotion', async (req, res) => {
         messages: [
           {
             role: 'system',
-            content: `Generate 3 thoughtful journal prompts for someone feeling ${emotion}. Make them reflective, compassionate, and helpful for mental wellness. Return ONLY a valid JSON array of 3 strings, no markdown, no extra text.`,
-          },
-          {
-            role: 'user',
-            content: `Generate journal prompts for ${emotion}`,
-          },
+            content: `Generate 3 journal prompts for ${emotion}. Return ONLY JSON array.`
+          }
         ],
         model: 'llama-3.3-70b-versatile',
-        temperature: 0.8,
+        temperature: 0.7,
         max_tokens: 200,
       });
 
-      let responseText = completion.choices[0].message.content.trim();
-      
-      // Remove markdown code blocks if present
-      responseText = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-      
-      const prompts = JSON.parse(responseText);
+      let text = completion.choices[0].message.content
+        .replace(/```json/g, '')
+        .replace(/```/g, '')
+        .trim();
+
+      const prompts = JSON.parse(text);
 
       res.json({
         success: true,
-        data: {
-          emotion,
-          prompts,
-          source: 'ai-generated',
-        },
+        data: { emotion, prompts, source: 'ai' },
       });
-    } catch (aiError) {
-      console.log('AI failed, using fallback prompts:', aiError.message);
+
+    } catch {
       res.json({
         success: true,
         data: {
           emotion,
-          prompts: fallbackPrompts[emotion] || fallbackPrompts.neutral,
+          prompts: fallback[emotion] || fallback.neutral,
           source: 'fallback',
         },
       });
     }
   } catch (error) {
-    console.error('Journal prompts error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// GET /api/journal/export-pdf/:userId - Export journals as PDF
-router.get('/export-pdf/:userId', async (req, res) => {
+/* =========================
+   EXPORT PDF
+========================= */
+router.get('/export-pdf', async (req, res) => {
   try {
-    const { userId } = req.params;
+    const { userId } = req.user;
 
     const snapshot = await db
       .collection('journals')
@@ -327,59 +299,32 @@ router.get('/export-pdf/:userId', async (req, res) => {
       .orderBy('createdAt', 'desc')
       .get();
 
-    if (snapshot.empty) {
-      return res.status(404).json({
-        success: false,
-        error: 'No journal entries found',
-      });
-    }
-
     const journals = snapshot.docs.map(doc => ({
       ...doc.data(),
       createdAt: doc.data().createdAt.toDate(),
     }));
 
-    // Create PDF
-    const doc = new PDFDocument({ margin: 50 });
+    const pdf = new PDFDocument({ margin: 40 });
 
-    // Set response headers
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename=my-journal.pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename=journal.pdf');
 
-    // Pipe PDF to response
-    doc.pipe(res);
+    pdf.pipe(res);
 
-    // Add title
-    doc.fontSize(24).text('My Mental Health Journal', { align: 'center' });
-    doc.moveDown();
-    doc.fontSize(12).text(`Exported on ${new Date().toLocaleDateString()}`, { align: 'center' });
-    doc.moveDown(2);
+    pdf.fontSize(20).text('Mental Health Journal', { align: 'center' });
+    pdf.moveDown();
 
-    // Add entries
-    journals.forEach((journal, index) => {
-      doc.fontSize(14).font('Helvetica-Bold').text(`Entry ${index + 1}`, { underline: true });
-      doc.fontSize(10).font('Helvetica').text(journal.createdAt.toDateString());
-      if (journal.emotionTag) {
-        doc.fillColor('#666').text(`Mood: ${journal.emotionTag}`);
-        doc.fillColor('#000');
-      }
-      doc.moveDown(0.5);
-      doc.fontSize(11).text(journal.content, { align: 'justify' });
-      doc.moveDown(2);
-
-      // Page break after every 2 entries
-      if ((index + 1) % 2 === 0 && index < journals.length - 1) {
-        doc.addPage();
-      }
+    journals.forEach((j, i) => {
+      pdf.fontSize(12).text(`Entry ${i + 1}`, { underline: true });
+      pdf.text(j.createdAt.toDateString());
+      pdf.moveDown(0.5);
+      pdf.text(j.content);
+      pdf.moveDown(1);
     });
 
-    doc.end();
+    pdf.end();
   } catch (error) {
-    console.error('PDF export error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

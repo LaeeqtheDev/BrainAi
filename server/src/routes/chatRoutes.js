@@ -1,89 +1,122 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../config/firebase');
+const { verifyToken } = require('../middleware/authMiddleware');
+const { chatLimiter } = require('../middleware/rateLimiter');
 const { analyzeEmotionConversational } = require('../services/groqService');
 
-// POST /api/chat/message (Supports both authenticated and guest users)
-router.post('/message', async (req, res) => {
+router.use(verifyToken);
+
+// Build full user context for the AI
+async function buildUserContext(userId) {
+  const userDoc = await db.collection('users').doc(userId).get();
+  const userName = userDoc.exists ? userDoc.data().name : 'friend';
+
+  // Last 10 moods
+  const moodSnap = await db.collection('moodLogs')
+    .where('userId', '==', userId)
+    .orderBy('timestamp', 'desc').limit(10).get();
+  const recentMoods = moodSnap.docs.map((d) => {
+    const data = d.data();
+    return {
+      emotion: data.emotion,
+      intensity: data.intensity,
+      note: data.note,
+      moodKey: data.moodKey,
+      when: data.timestamp.toDate().toISOString(),
+    };
+  });
+
+  // Last 5 journal entries (snippet only)
+  const journalSnap = await db.collection('journals')
+    .where('userId', '==', userId)
+    .orderBy('createdAt', 'desc').limit(5).get();
+  const recentJournal = journalSnap.docs.map((d) => {
+    const data = d.data();
+    return {
+      title: data.title,
+      snippet: (data.content || '').slice(0, 240),
+      emotionTag: data.emotionTag,
+      when: data.createdAt.toDate().toISOString(),
+    };
+  });
+
+  // Streak
+  let currentStreak = 0;
+  if (recentMoods.length) {
+    const dates = [...new Set(recentMoods.map((m) => {
+      const dt = new Date(m.when); dt.setHours(0, 0, 0, 0); return dt.getTime();
+    }))].sort((a, b) => b - a);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    if (dates[0] === today.getTime() || dates[0] === today.getTime() - 86400000) {
+      currentStreak = 1;
+      for (let i = 0; i < dates.length - 1; i++) {
+        if (dates[i] - dates[i + 1] === 86400000) currentStreak++;
+        else break;
+      }
+    }
+  }
+
+  // Dominant emotion (last 7 days)
+  const weekAgo = Date.now() - 7 * 86400000;
+  const recentForDominant = recentMoods.filter((m) => new Date(m.when).getTime() >= weekAgo);
+  const counts = {};
+  recentForDominant.forEach((m) => { counts[m.emotion] = (counts[m.emotion] || 0) + 1; });
+  const dominantEmotion = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0] || null;
+
+  return { userName, recentMoods, recentJournal, currentStreak, dominantEmotion };
+}
+
+// POST /api/chat/message
+router.post('/message', chatLimiter, async (req, res) => {
   try {
-    const { userId, message, isGuest } = req.body;
-
-    if (!userId || !message) {
-      return res.status(400).json({ 
-        success: false,
-        error: 'userId and message required' 
-      });
+    const { userId } = req.user;
+    const { message } = req.body;
+    if (!message || !message.trim()) {
+      return res.status(400).json({ success: false, error: 'message required' });
     }
 
-    console.log(`${isGuest ? 'Guest' : 'User'} ${userId}: "${message}"`);
-
-    // Get conversation history
-    const collection = isGuest ? 'guestChats' : 'chats';
-    const historySnapshot = await db
-      .collection(collection)
+    // Load chat history (last 20 turns for context)
+    const historySnap = await db.collection('chats')
       .where('userId', '==', userId)
-      .orderBy('timestamp', 'desc')
-      .limit(10)
-      .get();
+      .orderBy('timestamp', 'desc').limit(20).get();
 
-    // Check message limit for guests
-    if (isGuest && historySnapshot.size >= 3) {
-      return res.status(403).json({
-        success: false,
-        limitReached: true,
-        message: 'You\'ve reached your trial limit. Create an account to continue your wellness journey.',
-        messageCount: historySnapshot.size,
-      });
-    }
-
-    // Build conversation history for AI context
     const conversationHistory = [];
-    historySnapshot.docs.reverse().forEach((doc) => {
-      const chat = doc.data();
-      conversationHistory.push({
-        role: 'user',
-        content: chat.userMessage,
-      });
-      conversationHistory.push({
-        role: 'assistant',
-        content: chat.aiResponse,
-      });
+    historySnap.docs.reverse().forEach((doc) => {
+      const c = doc.data();
+      conversationHistory.push({ role: 'user', content: c.userMessage });
+      conversationHistory.push({ role: 'assistant', content: c.aiResponse });
     });
 
-    console.log(` Loaded ${conversationHistory.length / 2} previous messages for context`);
+    // Build rich context
+    const userContext = await buildUserContext(userId);
+    console.log(`💬 ${userContext.userName} (streak: ${userContext.currentStreak}, dominant: ${userContext.dominantEmotion})`);
 
-    // Analyze with conversation context + NLP
-    const analysis = await analyzeEmotionConversational(message, conversationHistory);
+    // Analyze + respond
+    const analysis = await analyzeEmotionConversational(message, conversationHistory, userContext);
 
-    console.log(`Emotion: ${analysis.emotion} (confidence: ${analysis.nlpAnalysis?.confidence})`);
-
-    // Save to appropriate collection
-    const chatRef = await db.collection(collection).add({
+    // Persist
+    const chatRef = await db.collection('chats').add({
       userId,
       userMessage: message,
       aiResponse: analysis.response,
       emotion: analysis.emotion,
       suggestion: analysis.suggestion,
       followUpPrompts: analysis.followUpPrompts || [],
-      
-      // NLP metadata
       nlpAnalysis: analysis.nlpAnalysis || null,
-      
+      crisisFlag: analysis.crisisFlag || false,
       timestamp: new Date(),
-      isGuest: isGuest || false,
     });
 
-    // Calculate remaining messages for guest
-    const messagesRemaining = isGuest ? 3 - (historySnapshot.size + 1) : null;
-
-    // Save mood log (only for authenticated users with meaningful emotions)
-    if (!isGuest && analysis.emotion !== 'neutral') {
+    // Auto-log mood from chat (if meaningful and intense)
+    if (analysis.emotion && analysis.emotion !== 'neutral' && analysis.nlpAnalysis?.confidence === 'high') {
       await db.collection('moodLogs').add({
         userId,
         emotion: analysis.emotion,
-        date: new Date().toISOString().split('T')[0],
-        timestamp: new Date(),
+        intensity: analysis.nlpAnalysis?.sentimentIntensity === 'high' ? 8 : 5,
+        note: `(from chat) ${message.slice(0, 120)}`,
         source: 'chat',
+        timestamp: new Date(),
       });
     }
 
@@ -95,89 +128,51 @@ router.post('/message', async (req, res) => {
         response: analysis.response,
         suggestion: analysis.suggestion,
         followUpPrompts: analysis.followUpPrompts,
-        nlpAnalysis: analysis.nlpAnalysis,
+        crisisFlag: analysis.crisisFlag || false,
+        crisisResources: analysis.crisisFlag ? {
+          message: "You don't have to face this alone.",
+          hotline: '0311-7786264 (Umang Pakistan)',
+          emergency: '1122',
+        } : null,
       },
-      isGuest,
-      messagesRemaining,
-      showLoginPrompt: isGuest && messagesRemaining === 0,
     });
-  } catch (error) {
-    console.error('Chat error:', error);
-    res.status(500).json({ 
-      success: false,
-      error: error.message 
-    });
+  } catch (e) {
+    console.error('Chat error:', e);
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 
-// GET /api/chat/history/:userId
-router.get('/history/:userId', async (req, res) => {
+// GET /api/chat/history
+router.get('/history', async (req, res) => {
   try {
-    const { userId } = req.params;
-    const { isGuest } = req.query;
+    const { userId } = req.user;
     const limit = parseInt(req.query.limit) || 50;
 
-    const collection = isGuest === 'true' ? 'guestChats' : 'chats';
-
-    const snapshot = await db
-      .collection(collection)
+    const snap = await db.collection('chats')
       .where('userId', '==', userId)
-      .orderBy('timestamp', 'desc')
-      .limit(limit)
-      .get();
+      .orderBy('timestamp', 'desc').limit(limit).get();
 
-    const chats = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-      timestamp: doc.data().timestamp.toDate().toISOString(),
+    const chats = snap.docs.map((d) => ({
+      id: d.id, ...d.data(),
+      timestamp: d.data().timestamp.toDate().toISOString(),
     }));
-
-    res.json({ 
-      success: true, 
-      data: chats,
-      messageCount: chats.length,
-    });
-  } catch (error) {
-    console.error('Chat history error:', error);
-    res.status(500).json({ 
-      success: false,
-      error: error.message 
-    });
+    res.json({ success: true, data: chats, count: chats.length });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 
-// DELETE /api/chat/clear/:userId (Clear conversation)
-router.delete('/clear/:userId', async (req, res) => {
+// DELETE /api/chat/clear
+router.delete('/clear', async (req, res) => {
   try {
-    const { userId } = req.params;
-    const { isGuest } = req.query;
-
-    const collection = isGuest === 'true' ? 'guestChats' : 'chats';
-
-    const snapshot = await db
-      .collection(collection)
-      .where('userId', '==', userId)
-      .get();
-
+    const { userId } = req.user;
+    const snap = await db.collection('chats').where('userId', '==', userId).get();
     const batch = db.batch();
-    snapshot.docs.forEach((doc) => {
-      batch.delete(doc.ref);
-    });
-
+    snap.docs.forEach((d) => batch.delete(d.ref));
     await batch.commit();
-
-    console.log(`Cleared ${snapshot.size} messages for ${isGuest ? 'guest' : 'user'} ${userId}`);
-
-    res.json({
-      success: true,
-      message: `Cleared ${snapshot.size} messages`,
-    });
-  } catch (error) {
-    console.error(' Clear chat error:', error);
-    res.status(500).json({ 
-      success: false,
-      error: error.message 
-    });
+    res.json({ success: true, cleared: snap.size });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 

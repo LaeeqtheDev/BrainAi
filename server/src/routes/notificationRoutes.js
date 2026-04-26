@@ -1,22 +1,30 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../config/firebase');
+const { verifyToken } = require('../middleware/authMiddleware');
 
-// POST /api/notifications/schedule
+// 🔐 Protect all routes
+router.use(verifyToken);
+
+/**
+ * POST /api/notifications/schedule
+ * SELF ONLY (userId removed from body)
+ */
 router.post('/schedule', async (req, res) => {
   try {
-    const { userId, type, title, message, scheduledTime } = req.body;
+    const userId = req.user.userId;
+    const { type, title, message, scheduledTime } = req.body;
 
-    if (!userId || !type || !title || !message) {
+    if (!type || !title || !message) {
       return res.status(400).json({
         success: false,
-        error: 'userId, type, title, and message required',
+        error: 'type, title, and message required',
       });
     }
 
     const notificationRef = await db.collection('notifications').add({
       userId,
-      type, // 'breathing', 'mood_check', 'daily_inspiration', 'journal_reminder', 'encouragement'
+      type,
       title,
       message,
       scheduledTime: scheduledTime || new Date(),
@@ -24,8 +32,6 @@ router.post('/schedule', async (req, res) => {
       read: false,
       createdAt: new Date(),
     });
-
-    console.log(`Notification scheduled for user ${userId}`);
 
     res.json({
       success: true,
@@ -35,7 +41,6 @@ router.post('/schedule', async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Schedule notification error:', error);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -43,10 +48,13 @@ router.post('/schedule', async (req, res) => {
   }
 });
 
-// GET /api/notifications/:userId
-router.get('/:userId', async (req, res) => {
+/**
+ * GET /api/notifications
+ * SELF ONLY (no :userId param)
+ */
+router.get('/', async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = req.user.userId;
     const limit = parseInt(req.query.limit) || 20;
 
     const snapshot = await db
@@ -56,12 +64,16 @@ router.get('/:userId', async (req, res) => {
       .limit(limit)
       .get();
 
-    const notifications = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt.toDate().toISOString(),
-      scheduledTime: doc.data().scheduledTime.toDate().toISOString(),
-    }));
+    const notifications = snapshot.docs.map(doc => {
+      const data = doc.data();
+
+      return {
+        id: doc.id,
+        ...data,
+        createdAt: data.createdAt?.toDate?.().toISOString?.() || null,
+        scheduledTime: data.scheduledTime?.toDate?.().toISOString?.() || null,
+      };
+    });
 
     res.json({
       success: true,
@@ -69,7 +81,6 @@ router.get('/:userId', async (req, res) => {
       count: notifications.length,
     });
   } catch (error) {
-    console.error('Get notifications error:', error);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -77,10 +88,30 @@ router.get('/:userId', async (req, res) => {
   }
 });
 
-// PUT /api/notifications/:notificationId/read
+/**
+ * PUT /api/notifications/:notificationId/read
+ * SELF VERIFIED (ensures ownership)
+ */
 router.put('/:notificationId/read', async (req, res) => {
   try {
+    const userId = req.user.userId;
     const { notificationId } = req.params;
+
+    const doc = await db.collection('notifications').doc(notificationId).get();
+
+    if (!doc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: 'Notification not found',
+      });
+    }
+
+    if (doc.data().userId !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: 'Unauthorized',
+      });
+    }
 
     await db.collection('notifications').doc(notificationId).update({
       read: true,
@@ -92,7 +123,6 @@ router.put('/:notificationId/read', async (req, res) => {
       message: 'Notification marked as read',
     });
   } catch (error) {
-    console.error('Mark notification read error:', error);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -100,7 +130,10 @@ router.put('/:notificationId/read', async (req, res) => {
   }
 });
 
-// GET /api/notifications/templates/all
+/**
+ * GET /api/notifications/templates/all
+ * PUBLIC (safe static config)
+ */
 router.get('/templates/all', (req, res) => {
   const templates = {
     breathing: {
@@ -125,12 +158,12 @@ router.get('/templates/all', (req, res) => {
     },
     encouragement: {
       title: "You're doing great!",
-      message: "You've logged your mood 5 days in a row. Keep it up! 👏",
+      message: "You've been consistent. Keep going 👏",
       icon: 'heart',
     },
     gentleReminder: {
       title: 'Gentle Reminders',
-      message: "We'll send you peaceful reminders to support your mental wellness journey.",
+      message: 'Supportive nudges for your mental wellness journey.',
       icon: 'bell',
     },
   };

@@ -1,44 +1,57 @@
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
-// Auth Screens
-import OnboardingScreen from '../screens/auth/OnboardingScreen';
-import LoginScreen from '../screens/auth/LoginScreen';
-import SignupScreen from '../screens/auth/SignupScreen';
+import { useAuth } from '../context/AuthContext';
+import AuthStack from './AuthStack';
+import MainTabs from './MainTabs';
 
-// Main Screens
 import ChatbotScreen from '../screens/main/ChatbotScreen';
-import BreathingScreen from '../screens/toolkit/BreathingScreen';
-import QuranScreen from '../screens/toolkit/QuranScreen';
+import BreathingScreen from '../screens/main/BreathingScreen';
+import QuranicHealingScreen from '../screens/main/QuranicHealingScreen';
 
-// Tab Navigator
-import TabNavigator from './TabNavigator';
+import { Colors } from '../config/theme';
 
 const Stack = createNativeStackNavigator();
 
-export default function AppNavigator() {
+const NavTheme = {
+  ...DefaultTheme,
+  colors: { ...DefaultTheme.colors, background: Colors.background },
+};
+
+function MainStack() {
   return (
-    <NavigationContainer>
-      <Stack.Navigator
-        initialRouteName="Tabs"
-        screenOptions={{
-          headerShown: false,
-        }}
-      >
-        {/* Auth Screens */}
-        <Stack.Screen name="Onboarding" component={OnboardingScreen} />
-        <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="Signup" component={SignupScreen} />
-        
-        {/* Main App - Tab Navigator */}
-        <Stack.Screen name="Tabs" component={TabNavigator} />
-        
-        {/* Modal/Overlay Screens (not in tabs) */}
-        <Stack.Screen name="Chatbot" component={ChatbotScreen} />
-        <Stack.Screen name="Breathing" component={BreathingScreen} />
-        <Stack.Screen name="Quran" component={QuranScreen} />
-      </Stack.Navigator>
+    <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+      <Stack.Screen name="MainTabs" component={MainTabs} />
+      <Stack.Screen name="Chatbot" component={ChatbotScreen} />
+      <Stack.Screen name="Breathing" component={BreathingScreen} />
+      <Stack.Screen name="QuranicHealing" component={QuranicHealingScreen} />
+    </Stack.Navigator>
+  );
+}
+
+export default function AppNavigator() {
+  const { user, initializing } = useAuth();
+
+  if (initializing) {
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
+
+  return (
+    <NavigationContainer theme={NavTheme}>
+      {user ? <MainStack /> : <AuthStack />}
     </NavigationContainer>
   );
 }
+
+const styles = StyleSheet.create({
+  loading: {
+    flex: 1, backgroundColor: Colors.background,
+    alignItems: 'center', justifyContent: 'center',
+  },
+});

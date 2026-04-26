@@ -2,6 +2,7 @@
   "expo": {
     "name": "Mental Health Fitness",
     "slug": "mental-health-fitness",
+    "scheme": "mentalhealth",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -19,6 +20,9 @@
         "backgroundColor": "#faf8f3"
       },
       "package": "com.mentalhealthfitness.app"
-    }
+    },
+    "plugins": [
+      "expo-font"
+    ]
   }
 }

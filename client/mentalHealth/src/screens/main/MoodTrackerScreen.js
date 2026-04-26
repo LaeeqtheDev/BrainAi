@@ -1,479 +1,341 @@
-import React, { useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  StatusBar,
-  ScrollView,
-  SafeAreaView,
-  Dimensions,
-  Platform,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput,
+  Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Spacing, BorderRadius, FontSizes } from '../../constants/colors';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 
-const { width } = Dimensions.get('window');
+import ScreenHeader from '../../components/common/ScreenHeader';
+import Button from '../../components/common/Button';
+import MoodLineChart from '../../components/MoodLineChart';
+import EmotionBarChart from '../../components/EmotionBarChart';
+import { MOODS, saveMood, getRecentMoods } from '../../services/moodService';
+import { Colors, Spacing, Fonts, FontSizes, Radius, Shadow } from '../../config/theme';
 
-export default function MoodTrackerScreen({ navigation }) {
-  const [selectedPeriod, setSelectedPeriod] = useState('week');
+const RANGES = [
+  { key: 'week',  label: 'This Week',  days: 7 },
+  { key: 'month', label: 'This Month', days: 30 },
+  { key: 'all',   label: 'All Time',   days: 365 },
+];
 
-  // Mock data for line chart
-  const weekData = [
-    { day: 'Mon', value: 5 },
-    { day: 'Tue', value: 6 },
-    { day: 'Wed', value: 8 },
-    { day: 'Thu', value: 5 },
-    { day: 'Fri', value: 7 },
-    { day: 'Sat', value: 9 },
-    { day: 'Sun', value: 9 },
-  ];
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-  // Mock data for bar chart
-  const emotionData = [
-    { emotion: 'Happy', count: 12, color: '#2196F3' },
-    { emotion: 'Calm', count: 18, color: '#2196F3' },
-    { emotion: 'Neutral', count: 8, color: '#2196F3' },
-    { emotion: 'Stressed', count: 6, color: '#2196F3' },
-    { emotion: 'Anxious', count: 4, color: '#2196F3' },
-  ];
+export default function MoodTrackerScreen() {
+  const [selected, setSelected] = useState(null);
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [recent, setRecent] = useState([]);
+  const [range, setRange] = useState('week');
 
-  const insights = [
-    {
-      icon: '✓',
-      title: 'Positive Trend',
-      description: 'Your mood improved by 25% this week. Keep up the great work!',
-      bgColor: '#E8F5E9',
-      iconBg: '#4CAF50',
-    },
-    {
-      icon: '🌙',
-      title: 'Evening Pattern',
-      description: 'You feel stressed most on evenings. Consider an evening relaxation routine.',
-      bgColor: '#FFF9E6',
-      iconBg: '#FFC107',
-    },
-    {
-      icon: '📅',
-      title: 'Weekend Boost',
-      description: 'Your mood is consistently higher on weekends. What activities bring you joy?',
-      bgColor: '#E3F2FD',
-      iconBg: '#2196F3',
-    },
-  ];
+  const load = useCallback(async () => {
+    const moods = await getRecentMoods(365);
+    setRecent(moods);
+  }, []);
+
+  useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const handleSave = async () => {
+    if (!selected) {
+      Alert.alert('Pick a mood', "Choose how you're feeling first.");
+      return;
+    }
+    setSaving(true);
+    const res = await saveMood({ moodKey: selected, note });
+    setSaving(false);
+
+    if (res.success) {
+      setSelected(null); setNote(''); load();
+    } else {
+      Alert.alert('Could not save', res.error || 'Try again');
+    }
+  };
+
+  // Filter by range
+  const filteredMoods = useMemo(() => {
+    const days = RANGES.find((r) => r.key === range).days;
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    return recent.filter((m) => new Date(m.createdAtIso).getTime() >= cutoff);
+  }, [recent, range]);
+
+  // Build line chart data — last 7 days, latest mood per day
+  const chartData = useMemo(() => {
+    const days = range === 'week' ? 7 : range === 'month' ? 30 : 30; // cap chart at 30 points
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+
+    const buckets = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(today); d.setDate(today.getDate() - i);
+      const dayMoods = recent.filter((m) => {
+        const md = new Date(m.createdAtIso); md.setHours(0, 0, 0, 0);
+        return md.getTime() === d.getTime();
+      });
+      const meta = dayMoods.length
+        ? MOODS.find((mm) => mm.key === dayMoods[0].moodKey)
+        : null;
+      buckets.push({
+        label: days <= 7 ? DAY_LABELS[d.getDay()] : `${d.getDate()}`,
+        value: meta ? meta.value : null,
+      });
+    }
+    return buckets;
+  }, [recent, range]);
+
+  // Emotion breakdown bars
+  const breakdown = useMemo(() => {
+    return MOODS.map((m) => ({
+      label: m.label, emoji: m.emoji,
+      value: filteredMoods.filter((x) => x.moodKey === m.key).length,
+    }));
+  }, [filteredMoods]);
+
+  // Insights
+  const insights = useMemo(() => {
+    const out = [];
+    const values = filteredMoods
+      .map((m) => MOODS.find((x) => x.key === m.moodKey)?.value)
+      .filter(Boolean);
+
+    if (values.length >= 4) {
+      const half = Math.floor(values.length / 2);
+      const recentAvg = values.slice(0, half).reduce((a, b) => a + b, 0) / half;
+      const olderAvg = values.slice(half).reduce((a, b) => a + b, 0) / (values.length - half);
+      const delta = recentAvg - olderAvg;
+
+      if (delta > 0.4) {
+        out.push({
+          icon: 'trending-up', tint: '#E2EAE3',
+          title: 'Trending upward',
+          text: 'Your mood has been a little brighter lately. Notice what\'s helping.',
+        });
+      } else if (delta < -0.4) {
+        out.push({
+          icon: 'trending-down', tint: '#F5DECF',
+          title: 'Heavier days',
+          text: 'Recent moods have dipped. Be especially gentle with yourself.',
+        });
+      }
+    }
+
+    if (filteredMoods.length > 0) {
+      const counts = {};
+      filteredMoods.forEach((m) => { counts[m.moodKey] = (counts[m.moodKey] || 0) + 1; });
+      const topKey = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
+      const meta = MOODS.find((x) => x.key === topKey);
+      if (meta) {
+        out.push({
+          icon: 'sparkles', tint: '#EFE6D6',
+          title: `Mostly ${meta.label.toLowerCase()}`,
+          text: `${meta.emoji} You logged "${meta.label}" most often this ${range === 'week' ? 'week' : 'period'}.`,
+        });
+      }
+    }
+
+    if (filteredMoods.length >= 5) {
+      out.push({
+        icon: 'medal-outline', tint: '#E8E1F0',
+        title: 'Showing up',
+        text: `${filteredMoods.length} check-ins. The act of noticing matters.`,
+      });
+    }
+
+    return out;
+  }, [filteredMoods, range]);
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#00ACC1" />
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <ScreenHeader
+            eyebrow="Mood tracker"
+            title="How are you?"
+            subtitle="There's no wrong answer. Just notice."
+          />
 
-      {/* Gradient Header */}
-      <LinearGradient
-        colors={['#00ACC1', '#2196F3']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={styles.headerGradient}
-      >
-        <SafeAreaView>
-          <View style={styles.header}>
-            <TouchableOpacity 
-              style={styles.backButton}
-              onPress={() => navigation.navigate('HomeTab')}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.backIcon}>←</Text>
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>Mood Tracker</Text>
-            <View style={styles.placeholder} />
+          {/* Mood picker */}
+          <View style={styles.moodGrid}>
+            {MOODS.map((m) => {
+              const active = selected === m.key;
+              return (
+                <TouchableOpacity
+                  key={m.key} activeOpacity={0.85}
+                  onPress={() => setSelected(m.key)}
+                  style={[styles.moodTile, active && styles.moodTileActive]}
+                >
+                  <Text style={styles.moodEmoji}>{m.emoji}</Text>
+                  <Text style={[styles.moodLabel, active && styles.moodLabelActive]}>{m.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
-        </SafeAreaView>
-      </LinearGradient>
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Period Filter Pills */}
-        <View style={styles.filterContainer}>
-          <TouchableOpacity
-            style={[styles.filterPill, selectedPeriod === 'week' && styles.filterPillActive]}
-            onPress={() => setSelectedPeriod('week')}
-          >
-            <Text style={[styles.filterText, selectedPeriod === 'week' && styles.filterTextActive]}>
-              This Week
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterPill, selectedPeriod === 'month' && styles.filterPillActive]}
-            onPress={() => setSelectedPeriod('month')}
-          >
-            <Text style={[styles.filterText, selectedPeriod === 'month' && styles.filterTextActive]}>
-              This Month
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterPill, selectedPeriod === 'all' && styles.filterPillActive]}
-            onPress={() => setSelectedPeriod('all')}
-          >
-            <Text style={[styles.filterText, selectedPeriod === 'all' && styles.filterTextActive]}>
-              All Time
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Mood Trends Card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardIcon}>📈</Text>
-            <Text style={styles.cardTitle}>Mood Trends</Text>
+          <View style={styles.noteWrap}>
+            <Text style={styles.noteLabel}>A line about it (optional)</Text>
+            <TextInput
+              value={note} onChangeText={setNote}
+              placeholder="What's behind this feeling?"
+              placeholderTextColor={Colors.textMuted}
+              multiline style={styles.noteInput}
+            />
           </View>
-          
-          {/* Line Chart */}
-          <View style={styles.lineChartContainer}>
-            {/* Y-axis labels */}
-            <View style={styles.yAxisLabels}>
-              <Text style={styles.axisLabel}>10</Text>
-              <Text style={styles.axisLabel}>5</Text>
-              <Text style={styles.axisLabel}>0</Text>
+
+          <Button title="Save check-in" onPress={handleSave} loading={saving} />
+
+          {/* Range tabs */}
+          <View style={styles.rangeTabs}>
+            {RANGES.map((r) => {
+              const active = r.key === range;
+              return (
+                <TouchableOpacity
+                  key={r.key} onPress={() => setRange(r.key)}
+                  style={[styles.rangeTab, active && styles.rangeTabActive]}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.rangeText, active && styles.rangeTextActive]}>{r.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Mood trend chart */}
+          <View style={styles.chartCard}>
+            <View style={styles.chartHeader}>
+              <Ionicons name="trending-up" size={18} color={Colors.primary} />
+              <Text style={styles.chartTitle}>Mood Trends</Text>
             </View>
-
-            {/* Chart area */}
-            <View style={styles.chartArea}>
-              {/* Grid lines */}
-              <View style={styles.gridLine} />
-              <View style={[styles.gridLine, { top: '50%' }]} />
-              <View style={[styles.gridLine, { top: '100%' }]} />
-
-              {/* Data points and line */}
-              <View style={styles.lineChart}>
-                {weekData.map((item, index) => {
-                  const height = (item.value / 10) * 100;
-                  return (
-                    <View key={index} style={styles.dataPointContainer}>
-                      <View 
-                        style={[
-                          styles.dataPoint,
-                          { bottom: `${height}%` }
-                        ]}
-                      />
-                      {index < weekData.length - 1 && (
-                        <View
-                          style={[
-                            styles.lineSegment,
-                            {
-                              bottom: `${height}%`,
-                              transform: [
-                                {
-                                  rotate: `${Math.atan2(
-                                    (weekData[index + 1].value - item.value) * 15,
-                                    40
-                                  )}rad`
-                                }
-                              ]
-                            }
-                          ]}
-                        />
-                      )}
-                    </View>
-                  );
-                })}
-              </View>
-
-              {/* X-axis labels */}
-              <View style={styles.xAxisLabels}>
-                {weekData.map((item, index) => (
-                  <Text key={index} style={styles.dayLabel}>{item.day}</Text>
-                ))}
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* Emotion Breakdown Card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardIcon}>📊</Text>
-            <Text style={styles.cardTitle}>Emotion Breakdown</Text>
+            <MoodLineChart data={chartData} />
           </View>
 
-          {/* Bar Chart */}
-          <View style={styles.barChartContainer}>
-            {/* Y-axis */}
-            <View style={styles.yAxisLabels}>
-              <Text style={styles.axisLabel}>20</Text>
-              <Text style={styles.axisLabel}>15</Text>
-              <Text style={styles.axisLabel}>10</Text>
-              <Text style={styles.axisLabel}>5</Text>
-              <Text style={styles.axisLabel}>0</Text>
+          {/* Emotion breakdown */}
+          <View style={styles.chartCard}>
+            <View style={styles.chartHeader}>
+              <Ionicons name="bar-chart-outline" size={18} color={Colors.primary} />
+              <Text style={styles.chartTitle}>Emotion Breakdown</Text>
             </View>
+            <EmotionBarChart data={breakdown} />
+          </View>
 
-            {/* Bars */}
-            <View style={styles.barsContainer}>
-              {emotionData.map((item, index) => (
-                <View key={index} style={styles.barColumn}>
-                  <View style={styles.barWrapper}>
-                    <View
-                      style={[
-                        styles.bar,
-                        {
-                          height: `${(item.count / 20) * 100}%`,
-                          backgroundColor: item.color,
-                        }
-                      ]}
-                    />
-                  </View>
-                  <Text style={styles.emotionLabel}>{item.emotion}</Text>
+          {/* Insights */}
+          <Text style={styles.sectionTitle}>Your insights</Text>
+          {insights.length === 0 ? (
+            <Text style={styles.empty}>Log a few moods to start seeing patterns.</Text>
+          ) : (
+            insights.map((ins, i) => (
+              <View key={i} style={styles.insightCard}>
+                <View style={[styles.insightIcon, { backgroundColor: ins.tint }]}>
+                  <Ionicons name={ins.icon} size={18} color={Colors.primary} />
                 </View>
-              ))}
-            </View>
-          </View>
-        </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.insightTitle}>{ins.title}</Text>
+                  <Text style={styles.insightText}>{ins.text}</Text>
+                </View>
+              </View>
+            ))
+          )}
 
-        {/* Insights Section */}
-        <Text style={styles.sectionTitle}>Your Insights</Text>
-        {insights.map((insight, index) => (
-          <View key={index} style={[styles.insightCard, { backgroundColor: insight.bgColor }]}>
-            <View style={[styles.insightIcon, { backgroundColor: insight.iconBg }]}>
-              <Text style={styles.insightIconText}>{insight.icon}</Text>
+          {/* Recent log */}
+          {filteredMoods.length > 0 && (
+            <View style={styles.recentWrap}>
+              <Text style={styles.sectionTitle}>Recent</Text>
+              {filteredMoods.slice(0, 10).map((entry) => {
+                const meta = MOODS.find((m) => m.key === entry.moodKey);
+                const date = new Date(entry.createdAtIso);
+                return (
+                  <View key={entry.id} style={styles.recentRow}>
+                    <Text style={styles.recentEmoji}>{meta?.emoji || '•'}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.recentLabel}>{meta?.label || entry.moodKey}</Text>
+                      {entry.note ? (
+                        <Text style={styles.recentNote} numberOfLines={2}>{entry.note}</Text>
+                      ) : null}
+                    </View>
+                    <Text style={styles.recentDate}>
+                      {date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                    </Text>
+                  </View>
+                );
+              })}
             </View>
-            <View style={styles.insightContent}>
-              <Text style={styles.insightTitle}>{insight.title}</Text>
-              <Text style={styles.insightDescription}>{insight.description}</Text>
-            </View>
-          </View>
-        ))}
-      </ScrollView>
-    </View>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F5F5',
+  container: { flex: 1, backgroundColor: Colors.background },
+  scroll: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.lg, paddingBottom: Spacing.xxl },
+  moodGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginBottom: Spacing.lg },
+  moodTile: {
+    flexBasis: '30%', flexGrow: 1,
+    backgroundColor: Colors.surface, borderRadius: Radius.lg,
+    paddingVertical: Spacing.md, alignItems: 'center',
+    borderWidth: 1.5, borderColor: 'transparent', ...Shadow.soft,
   },
-  headerGradient: {
-    paddingTop: 20,
+  moodTileActive: { borderColor: Colors.primary, backgroundColor: '#FFFCF6' },
+  moodEmoji: { fontSize: 32, marginBottom: 6 },
+  moodLabel: { fontSize: FontSizes.sm, fontFamily: Fonts.bodyMedium, color: Colors.textSecondary },
+  moodLabelActive: { color: Colors.primary },
+  noteWrap: { marginBottom: Spacing.lg },
+  noteLabel: {
+    fontSize: FontSizes.sm, fontFamily: Fonts.bodyMedium,
+    color: Colors.textSecondary, marginBottom: 8, letterSpacing: 0.3,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    minHeight: 56,
-    justifyContent: 'center', // center base
+  noteInput: {
+    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
+    borderRadius: Radius.md, padding: Spacing.md,
+    fontSize: FontSizes.md, fontFamily: Fonts.body,
+    color: Colors.textPrimary, minHeight: 100, textAlignVertical: 'top',
   },
-  
-  headerTitle: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    textAlign: 'center',
-    fontSize: 20,
-    fontWeight: '600',
-    color: Colors.white,
+  rangeTabs: {
+    flexDirection: 'row', gap: 8, marginTop: Spacing.xl, marginBottom: Spacing.md,
   },
-  backButton: {
-    position: 'absolute',
-    left: 20,
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
+  rangeTab: {
+    paddingVertical: 8, paddingHorizontal: 14,
+    borderRadius: Radius.pill, borderWidth: 1, borderColor: Colors.borderStrong,
+    backgroundColor: Colors.surface,
   },
-  backIcon: {
-    fontSize: 24,
-    color: Colors.white,
-    lineHeight: 24,
+  rangeTabActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  rangeText: { fontSize: FontSizes.sm, fontFamily: Fonts.bodyMedium, color: Colors.textPrimary },
+  rangeTextActive: { color: Colors.textOnDark },
+  chartCard: {
+    backgroundColor: Colors.surface, borderRadius: Radius.lg,
+    padding: Spacing.md, marginBottom: Spacing.md, ...Shadow.soft,
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: Colors.white,
-    lineHeight: 24,
-  },  
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 100,
-  },
-  filterContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 20,
-  },
-  filterPill: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
-    backgroundColor: Colors.white,
-  },
-  filterPillActive: {
-    backgroundColor: '#2196F3',
-  },
-  filterText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#666',
-  },
-  filterTextActive: {
-    color: Colors.white,
-  },
-  card: {
-    backgroundColor: Colors.white,
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  cardIcon: {
-    fontSize: 20,
-    marginRight: 8,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#212121',
-  },
-  lineChartContainer: {
-    flexDirection: 'row',
-    height: 180,
-  },
-  yAxisLabels: {
-    width: 30,
-    justifyContent: 'space-between',
-    paddingRight: 8,
-  },
-  axisLabel: {
-    fontSize: 12,
-    color: '#999',
-  },
-  chartArea: {
-    flex: 1,
-    position: 'relative',
-  },
-  gridLine: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: '#F0F0F0',
-    top: 0,
-  },
-  lineChart: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 10,
-    paddingTop: 10,
-    paddingBottom: 30,
-  },
-  dataPointContainer: {
-    flex: 1,
-    alignItems: 'center',
-    position: 'relative',
-  },
-  dataPoint: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#00BCD4',
-    position: 'absolute',
-  },
-  lineSegment: {
-    position: 'absolute',
-    left: 5,
-    width: 35,
-    height: 3,
-    backgroundColor: '#00BCD4',
-  },
-  xAxisLabels: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingHorizontal: 5,
-  },
-  dayLabel: {
-    fontSize: 12,
-    color: '#999',
-  },
-  barChartContainer: {
-    flexDirection: 'row',
-    height: 200,
-  },
-  barsContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'flex-end',
-    paddingBottom: 25,
-  },
-  barColumn: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  barWrapper: {
-    width: '80%',
-    height: 150,
-    justifyContent: 'flex-end',
-  },
-  bar: {
-    width: '100%',
-    borderTopLeftRadius: 4,
-    borderTopRightRadius: 4,
-  },
-  emotionLabel: {
-    fontSize: 11,
-    color: '#999',
-    marginTop: 8,
-  },
+  chartHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: Spacing.md },
+  chartTitle: { fontSize: FontSizes.md, fontFamily: Fonts.bodyMedium, color: Colors.textPrimary },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#212121',
-    marginBottom: 16,
-    marginTop: 8,
+    fontSize: FontSizes.xs, fontFamily: Fonts.bodyMedium,
+    color: Colors.textSecondary, letterSpacing: 1.6,
+    textTransform: 'uppercase', marginBottom: Spacing.md, marginTop: Spacing.lg,
   },
+  empty: { fontSize: FontSizes.sm, fontFamily: Fonts.body, color: Colors.textMuted, textAlign: 'center' },
   insightCard: {
-    flexDirection: 'row',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
+    flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.md,
+    backgroundColor: Colors.surface, borderRadius: Radius.lg,
+    padding: Spacing.md, marginBottom: Spacing.sm, ...Shadow.soft,
   },
   insightIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  insightIconText: {
-    fontSize: 18,
-    color: Colors.white,
-  },
-  insightContent: {
-    flex: 1,
+    width: 40, height: 40, borderRadius: Radius.md,
+    alignItems: 'center', justifyContent: 'center',
   },
   insightTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#212121',
-    marginBottom: 4,
+    fontSize: FontSizes.md, fontFamily: Fonts.bodyMedium,
+    color: Colors.textPrimary, marginBottom: 4,
   },
-  insightDescription: {
-    fontSize: 13,
-    color: '#666',
-    lineHeight: 18,
+  insightText: {
+    fontSize: FontSizes.sm, fontFamily: Fonts.body, color: Colors.textSecondary, lineHeight: 20,
   },
+  recentWrap: { marginTop: Spacing.lg },
+  recentRow: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
+    backgroundColor: Colors.surface, borderRadius: Radius.md,
+    padding: Spacing.md, marginBottom: Spacing.sm, ...Shadow.soft,
+  },
+  recentEmoji: { fontSize: 24 },
+  recentLabel: { fontSize: FontSizes.md, fontFamily: Fonts.bodyMedium, color: Colors.textPrimary },
+  recentNote: { fontSize: FontSizes.sm, fontFamily: Fonts.body, color: Colors.textSecondary, marginTop: 2 },
+  recentDate: { fontSize: FontSizes.xs, fontFamily: Fonts.body, color: Colors.textMuted },
 });
