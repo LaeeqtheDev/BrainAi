@@ -19,6 +19,7 @@ const reportRoutes       = require('./src/routes/reportRoutes');
 const notificationRoutes = require('./src/routes/notificationRoutes');
 
 const app = express();
+const feedbackRoutes = require('./src/routes/feedbackRoutes');
 
 app.use(helmet());
 app.use(cors({ origin: true, credentials: true }));
@@ -39,6 +40,7 @@ app.use('/api/crisis',        crisisRoutes);
 app.use('/api/settings',      settingsRoutes);
 app.use('/api/reports',       reportRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/feedback', feedbackRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

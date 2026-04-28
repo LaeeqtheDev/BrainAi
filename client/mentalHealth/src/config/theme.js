@@ -1,3 +1,6 @@
+import { scale, fScale } from './responsive';
+
+
 export const Colors = {
     // Backgrounds
     background: '#FAF6EF',       // warm cream
@@ -25,30 +28,30 @@ export const Colors = {
   };
   
   export const Spacing = {
-    xs: 4,
-    sm: 8,
-    md: 16,
-    lg: 24,
-    xl: 32,
-    xxl: 48,
+    xs: scale(4),
+    sm: scale(8),
+    md: scale(16),
+    lg: scale(24),
+    xl: scale(32),
+    xxl: scale(48),
   };
   
   export const Radius = {
-    sm: 8,
-    md: 12,
-    lg: 20,
-    xl: 28,
+    sm: scale(8),
+    md: scale(12),
+    lg: scale(20),
+    xl: scale(28),
     pill: 999,
   };
   
   export const FontSizes = {
-    xs: 12,
-    sm: 14,
-    md: 16,
-    lg: 18,
-    xl: 22,
-    xxl: 28,
-    display: 36,
+    xs: fScale(12),
+    sm: fScale(14),
+    md: fScale(16),
+    lg: fScale(18),
+    xl: fScale(22),
+    xxl: fScale(28),
+    display: fScale(36),
   };
   
   export const Fonts = {

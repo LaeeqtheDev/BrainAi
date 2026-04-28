@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { getRecentMoods, MOODS, saveMood } from '../../services/moodService';
 import { getJournalEntries } from '../../services/journalService';
-import { getDailyAffirmation } from '../../services/quoteService';
+import { getCachedAffirmation, getDailyAffirmation } from '../../services/quoteService';
 
 import { Colors, Spacing, FontSizes, Fonts, Radius, Shadow } from '../../config/theme';
 
@@ -21,11 +21,11 @@ const greeting = () => {
 };
 
 const FEATURE_CARDS = [
-  { key: 'Chatbot',        title: 'AI companion', sub: 'Talk it through', icon: 'chatbubbles-outline', tint: '#E2EAE3' },
-  { key: 'Mood',           title: 'Mood tracker', sub: 'See your weather', icon: 'pulse-outline', tint: '#F5DECF' },
-  { key: 'Journal',        title: 'Journal',      sub: 'Pages of you',     icon: 'book-outline', tint: '#EFE6D6' },
-  { key: 'Breathing',      title: 'Breathing',    sub: 'Calm your mind',   icon: 'leaf-outline', tint: '#DCEAE5' },
-  { key: 'QuranicHealing', title: 'Quranic healing', sub: 'Find solace', icon: 'sparkles-outline', tint: '#E8E1F0', wide: true },
+  { key: 'Chatbot',        title: 'AI companion',    sub: 'Talk it through',   icon: 'chatbubbles-outline', tint: '#E2EAE3' },
+  { key: 'Mood',           title: 'Mood tracker',    sub: 'See your weather',  icon: 'pulse-outline',       tint: '#F5DECF' },
+  { key: 'Journal',        title: 'Journal',         sub: 'Pages of you',      icon: 'book-outline',        tint: '#EFE6D6' },
+  { key: 'Breathing',      title: 'Breathing',       sub: 'Calm your mind',    icon: 'leaf-outline',        tint: '#DCEAE5' },
+  { key: 'QuranicHealing', title: 'Quranic healing', sub: 'Find solace',       icon: 'sparkles-outline',    tint: '#E8E1F0', wide: true },
 ];
 
 export default function HomeScreen() {
@@ -36,15 +36,18 @@ export default function HomeScreen() {
   const [journalCount, setJournalCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [savingMood, setSavingMood] = useState(false);
-
-  // ✅ backend affirmation
-  const [affirmation, setAffirmation] = useState("Take a breath. You're here.");
+  const [affirmation, setAffirmation] = useState('');
 
   const firstName = (user?.displayName || 'friend').split(' ')[0];
 
   const load = useCallback(async () => {
     try {
-      const [moods, entries, quote] = await Promise.all([
+      // 1) Show cached affirmation INSTANTLY (no waiting)
+      const cached = await getCachedAffirmation();
+      setAffirmation(cached);
+
+      // 2) Load everything in parallel — moods, journal, fresh affirmation
+      const [moods, entries, fresh] = await Promise.all([
         getRecentMoods(1),
         getJournalEntries(),
         getDailyAffirmation(),
@@ -52,7 +55,10 @@ export default function HomeScreen() {
 
       setLatestMood(moods[0] || null);
       setJournalCount(entries.length);
-      setAffirmation(quote || "Take a breath. You're here.");
+
+      // 3) Quietly swap to the fresh affirmation if it came back.
+      //    If null (network failed), keep showing the cached one.
+      if (fresh) setAffirmation(fresh);
     } catch (err) {
       console.log('Home load error:', err);
     }
@@ -120,11 +126,13 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Daily reminder (BACKEND POWERED) */}
-        <View style={styles.reminder}>
-          <Text style={styles.reminderLabel}>A note for today</Text>
-          <Text style={styles.reminderText}>"{affirmation}"</Text>
-        </View>
+        {/* Daily affirmation — cached instantly, refreshed silently */}
+        {affirmation ? (
+          <View style={styles.reminder}>
+            <Text style={styles.reminderLabel}>A note for today</Text>
+            <Text style={styles.reminderText}>"{affirmation}"</Text>
+          </View>
+        ) : null}
 
         {/* Feature grid */}
         <Text style={styles.sectionTitle}>Explore</Text>
@@ -162,7 +170,6 @@ export default function HomeScreen() {
             </Text>
           </View>
         </View>
-
       </ScrollView>
     </SafeAreaView>
   );

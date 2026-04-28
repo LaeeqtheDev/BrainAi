@@ -1,7 +1,7 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import { Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import HomeScreen from '../screens/main/HomeScreen';
 import MoodTrackerScreen from '../screens/main/MoodTrackerScreen';
@@ -22,6 +22,12 @@ const iconMap = {
 };
 
 export default function MainTabs() {
+  const insets = useSafeAreaInsets();
+
+  // Bottom inset: respect device safe area, with a sensible minimum
+  const bottomPad = Math.max(insets.bottom, 8);
+  const tabBarHeight = 56 + bottomPad; // 56dp content + safe area
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -32,14 +38,18 @@ export default function MainTabs() {
           backgroundColor: Colors.surface,
           borderTopColor: Colors.border,
           borderTopWidth: 1,
-          height: Platform.OS === 'ios' ? 88 : 64,
+          height: tabBarHeight,
           paddingTop: 8,
-          paddingBottom: Platform.OS === 'ios' ? 28 : 8,
+          paddingBottom: bottomPad,
+        },
+        tabBarItemStyle: {
+          paddingVertical: 4,
         },
         tabBarLabelStyle: {
           fontFamily: Fonts.bodyMedium,
           fontSize: FontSizes.xs,
-          letterSpacing: 0.5,
+          letterSpacing: 0.4,
+          marginTop: 2,
         },
         tabBarIcon: ({ focused, color, size }) => {
           const [outline, filled] = iconMap[route.name] || ['ellipse-outline', 'ellipse'];

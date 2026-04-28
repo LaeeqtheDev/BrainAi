@@ -13,16 +13,38 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.mentalhealthfitness.app"
+      "bundleIdentifier": "com.mentalhealthfitness.app",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Allow Mental Health Fitness to access your photos so you can set a profile picture.",
+        "NSCameraUsageDescription": "Allow Mental Health Fitness to use the camera for profile pictures.",
+        "NSFaceIDUsageDescription": "Use Face ID to unlock Mental Health Fitness."
+      }
     },
     "android": {
+      "package": "com.mentalhealthfitness.app",
       "adaptiveIcon": {
         "backgroundColor": "#faf8f3"
       },
-      "package": "com.mentalhealthfitness.app"
+      "permissions": ["USE_BIOMETRIC", "USE_FINGERPRINT", "VIBRATE"]
     },
     "plugins": [
-      "expo-font"
+      "expo-font",
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        { "color": "#2D4A3E" }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Mental Health Fitness to access your photos for profile pictures.",
+          "cameraPermission": "Allow Mental Health Fitness to take a profile photo."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        { "faceIDPermission": "Use Face ID to unlock Mental Health Fitness." }
+      ]
     ]
   }
 }

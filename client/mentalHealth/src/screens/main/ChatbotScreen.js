@@ -1,30 +1,45 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator,
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 import { getChatHistory, sendChatMessage } from '../../services/chatService';
-import { Colors, Spacing, Fonts, FontSizes, Radius, Shadow } from '../../config/theme';
+import { Colors, Spacing, Fonts, FontSizes, Radius } from '../../config/theme';
 
 export default function ChatbotScreen({ navigation }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [suggestions, setSuggestions] = useState(['Coping Tips', 'Reflect', 'Talk More']);
 
-  // ✅ CRISIS STATE
+  const [suggestions, setSuggestions] = useState([
+    'Coping Tips',
+    'Reflect',
+    'Talk More',
+  ]);
+
   const [crisisInfo, setCrisisInfo] = useState(null);
 
   const scrollRef = useRef(null);
 
+  // LOAD HISTORY
   useEffect(() => {
     (async () => {
       const history = await getChatHistory(50);
-      if (history.length === 0) {
+
+      if (history && history.length > 0) {
+        setMessages(history);
+      } else {
         setMessages([
           {
             id: 'welcome',
@@ -32,52 +47,82 @@ export default function ChatbotScreen({ navigation }) {
             text: "Hi, I'm here to listen. How are you feeling today?",
           },
         ]);
-      } else {
-        setMessages(history);
       }
+
       setLoading(false);
     })();
   }, []);
 
+  // AUTO SCROLL
   useEffect(() => {
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+    const t = setTimeout(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+
+    return () => clearTimeout(t);
   }, [messages]);
 
+  // SEND MESSAGE
   const send = async (textOverride) => {
     const text = (textOverride ?? input).trim();
     if (!text || sending) return;
 
-    const tempUserMsg = { id: `u-${Date.now()}`, role: 'user', text };
-    setMessages((prev) => [...prev, tempUserMsg]);
+    const userMsg = {
+      id: `u-${Date.now()}`,
+      role: 'user',
+      text,
+    };
+
+    setMessages((prev) => [...prev, userMsg]);
     setInput('');
     setSending(true);
 
-    const res = await sendChatMessage(text);
+    try {
+      const res = await sendChatMessage(text);
 
-    if (res.success) {
+      if (res?.success) {
+        const botMsg = {
+          id: `a-${Date.now()}`,
+          role: 'assistant',
+          text: res.reply || "I'm here with you.",
+        };
 
-      // ✅ CRISIS HANDLING (NEW)
-      if (res.crisisFlag) {
-        setCrisisInfo(res.crisisResources || {
-          title: "Support Resources",
-          message: "You're not alone. Please consider reaching out for support.",
-        });
+        setMessages((prev) => [...prev, botMsg]);
+
+        // FIX: correct mapping
+        setSuggestions(
+          Array.isArray(res.suggestions) && res.suggestions.length > 0
+            ? res.suggestions
+            : ['Talk', 'Stay', 'Breathe']
+        );setSuggestions(res.suggestions || []);
+
+        if (res?.crisisFlag) {
+          setCrisisInfo(
+            res?.crisisResources || {
+              title: 'Support Available',
+              message: "You're not alone. Help is available.",
+            }
+          );
+        }
+
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `err-${Date.now()}`,
+            role: 'assistant',
+            text: 'Connection issue. Try again.',
+          },
+        ]);
       }
 
-      setMessages((prev) => [
-        ...prev,
-        { id: `a-${Date.now()}`, role: 'assistant', text: res.reply },
-      ]);
-
-      if (res.suggestions) setSuggestions(res.suggestions);
-
-    } else {
+    } catch (e) {
       setMessages((prev) => [
         ...prev,
         {
           id: `err-${Date.now()}`,
           role: 'assistant',
-          text: "I couldn't reach the server. Check your connection and try again.",
+          text: 'Server not reachable. Try again.',
         },
       ]);
     }
@@ -88,7 +133,7 @@ export default function ChatbotScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
 
-      {/* ✅ CRISIS BANNER */}
+      {/* CRISIS BANNER */}
       {crisisInfo && (
         <View style={styles.crisisBanner}>
           <Ionicons name="alert-circle" size={18} color="#B00020" />
@@ -97,13 +142,13 @@ export default function ChatbotScreen({ navigation }) {
               {crisisInfo.title || 'Support Available'}
             </Text>
             <Text style={styles.crisisText}>
-              {crisisInfo.message || 'You are not alone. Help is available.'}
+              {crisisInfo.message || 'You are not alone.'}
             </Text>
           </View>
         </View>
       )}
 
-      {/* Header */}
+      {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.back}>
           <Ionicons name="chevron-back" size={22} color={Colors.textPrimary} />
@@ -113,6 +158,7 @@ export default function ChatbotScreen({ navigation }) {
           <View style={styles.headerIcon}>
             <Ionicons name="leaf" size={16} color={Colors.surface} />
           </View>
+
           <View>
             <Text style={styles.headerTitle}>Stillwater</Text>
             <Text style={styles.headerSub}>Always here to listen</Text>
@@ -122,6 +168,7 @@ export default function ChatbotScreen({ navigation }) {
         <View style={{ width: 40 }} />
       </View>
 
+      {/* CHAT */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
@@ -132,23 +179,33 @@ export default function ChatbotScreen({ navigation }) {
           keyboardShouldPersistTaps="handled"
         >
           {loading ? (
-            <ActivityIndicator color={Colors.primary} style={{ marginTop: 40 }} />
+            <ActivityIndicator style={{ marginTop: 40 }} />
           ) : (
             messages.map((m) => (
               <View
                 key={m.id}
                 style={[
                   styles.bubbleWrap,
-                  m.role === 'user' ? styles.bubbleWrapUser : styles.bubbleWrapBot,
+                  m.role === 'user'
+                    ? styles.bubbleWrapUser
+                    : styles.bubbleWrapBot,
                 ]}
               >
                 <View
                   style={[
                     styles.bubble,
-                    m.role === 'user' ? styles.bubbleUser : styles.bubbleBot,
+                    m.role === 'user'
+                      ? styles.bubbleUser
+                      : styles.bubbleBot,
                   ]}
                 >
-                  <Text style={m.role === 'user' ? styles.textUser : styles.textBot}>
+                  <Text
+                    style={
+                      m.role === 'user'
+                        ? styles.textUser
+                        : styles.textBot
+                    }
+                  >
                     {m.text}
                   </Text>
                 </View>
@@ -159,18 +216,18 @@ export default function ChatbotScreen({ navigation }) {
           {sending && (
             <View style={styles.bubbleWrapBot}>
               <View style={[styles.bubble, styles.bubbleBot]}>
-                <Text style={styles.textBot}>···</Text>
+                <Text style={styles.textBot}>typing...</Text>
               </View>
             </View>
           )}
         </ScrollView>
 
-        {/* Suggestions */}
+        {/* SUGGESTIONS */}
         {!sending && (
           <View style={styles.chipsRow}>
-            {suggestions.map((s) => (
+            {suggestions.map((s, i) => (
               <TouchableOpacity
-                key={s}
+                key={`${s}-${i}`}
                 onPress={() => send(s)}
                 style={styles.chip}
               >
@@ -180,7 +237,7 @@ export default function ChatbotScreen({ navigation }) {
           </View>
         )}
 
-        {/* Input */}
+        {/* INPUT */}
         <View style={styles.inputRow}>
           <TextInput
             value={input}
@@ -194,7 +251,10 @@ export default function ChatbotScreen({ navigation }) {
           <TouchableOpacity
             onPress={() => send()}
             disabled={!input.trim() || sending}
-            style={[styles.sendBtn, (!input.trim() || sending) && { opacity: 0.4 }]}
+            style={[
+              styles.sendBtn,
+              (!input.trim() || sending) && { opacity: 0.4 },
+            ]}
           >
             <Ionicons name="send" size={18} color={Colors.surface} />
           </TouchableOpacity>
@@ -204,8 +264,10 @@ export default function ChatbotScreen({ navigation }) {
   );
 }
 
+/* =========================
+   STYLES (UNCHANGED)
+========================= */
 const styles = StyleSheet.create({
-
   container: { flex: 1, backgroundColor: Colors.background },
 
   crisisBanner: {
@@ -235,7 +297,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: Spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderColor: Colors.border,
   },
 
   back: {
@@ -289,13 +351,8 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
   },
 
-  bubbleUser: {
-    backgroundColor: Colors.primary,
-  },
-
-  bubbleBot: {
-    backgroundColor: Colors.surface,
-  },
+  bubbleUser: { backgroundColor: Colors.primary },
+  bubbleBot: { backgroundColor: Colors.surface },
 
   textUser: { color: Colors.surface },
   textBot: { color: Colors.textPrimary },

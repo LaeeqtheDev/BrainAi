@@ -1,8 +1,9 @@
 import React, { useCallback, useState } from 'react';
 import {
-  View, Text, ScrollView, SafeAreaView, StyleSheet, TouchableOpacity,
-  TextInput, Modal, Alert, KeyboardAvoidingView, Platform,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity,
+  TextInput, Modal, Alert, KeyboardAvoidingView, Platform, StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -62,7 +63,8 @@ export default function JournalScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
@@ -121,7 +123,7 @@ export default function JournalScreen() {
         presentationStyle="pageSheet"
         onRequestClose={() => setModalOpen(false)}
       >
-        <SafeAreaView style={styles.modalContainer}>
+        <SafeAreaView style={styles.modalContainer} edges={['top', 'bottom']}>
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={{ flex: 1 }}
@@ -138,7 +140,10 @@ export default function JournalScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView contentContainerStyle={styles.modalBody}>
+            <ScrollView
+              contentContainerStyle={styles.modalBody}
+              keyboardShouldPersistTaps="handled"
+            >
               <TextInput
                 value={title}
                 onChangeText={setTitle}
@@ -164,7 +169,11 @@ export default function JournalScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  scroll: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.lg, paddingBottom: Spacing.xxl },
+  scroll: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.xxl,
+  },
   empty: {
     alignItems: 'center', marginTop: Spacing.xxl, paddingHorizontal: Spacing.lg,
   },
