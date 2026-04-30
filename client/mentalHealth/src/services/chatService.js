@@ -1,32 +1,58 @@
 import { apiPost, apiGet, apiDelete } from './apiService';
 
+export const getOpener = async () => {
+  try {
+    // apiService already unwraps body.data, so res IS the data
+    const data = await apiGet('/api/chat/opener');
+    console.log('✅ Opener response:', data);
+    
+    return {
+      greeting: data?.greeting || "hey. how's today landing?",
+      chips: data?.chips || ['pretty good', 'kinda rough', 'just need to talk', 'not sure'],
+    };
+  } catch (e) {
+    console.error('❌ Opener error:', e.message);
+    return {
+      greeting: "hey. how's today landing?",
+      chips: ['pretty good', 'kinda rough', 'just need to talk', 'not sure'],
+    };
+  }
+};
+
 export const sendChatMessage = async (message) => {
   try {
-    const res = await apiPost('/api/chat/message', { message });
-
-    const data = res?.data || res;
+    // apiService already unwraps body.data, so data IS the actual data
+    const data = await apiPost('/api/chat/message', { message });
+    console.log('✅ Chat response:', data);
 
     return {
       success: true,
       reply: data?.response || "I'm here with you.",
-      suggestions: data?.followUpPrompts || ['Talk', 'Stay', 'Breathe'],
+      suggestions: data?.followUpPrompts || ['talk more', 'stay with me', 'I need a moment'],
       emotion: data?.emotion || 'neutral',
       crisisFlag: !!data?.crisisFlag,
       crisisResources: data?.crisisResources || null,
     };
   } catch (e) {
-    return { success: false, error: e.message };
+    console.error('❌ Chat message error:', e);
+    return { 
+      success: false, 
+      error: e.message,
+      reply: "couldn't reach the server. check your connection?",
+    };
   }
 };
 
 export const getChatHistory = async (max = 50) => {
   try {
-    const res = await apiGet(`/api/chat/history?limit=${max}`);
+    // apiService already unwraps body.data, so data IS the array
+    const data = await apiGet(`/api/chat/history?limit=${max}`);
+    console.log('✅ History response:', Array.isArray(data) ? `${data.length} messages` : data);
 
-    // IMPORTANT FIX: backend returns { data: [] }
-    const data = res?.data?.data || res?.data || [];
-
-    if (!Array.isArray(data)) return [];
+    if (!Array.isArray(data)) {
+      console.warn('⚠️ History is not an array:', data);
+      return [];
+    }
 
     return data
       .slice()
@@ -44,7 +70,7 @@ export const getChatHistory = async (max = 50) => {
         }
       ]));
   } catch (e) {
-    console.log('chat history error:', e.message);
+    console.error('❌ Chat history error:', e.message);
     return [];
   }
 };
@@ -54,6 +80,7 @@ export const clearChatHistory = async () => {
     await apiDelete('/api/chat/clear');
     return { success: true };
   } catch (e) {
+    console.error('❌ Clear history error:', e.message);
     return { success: false, error: e.message };
   }
 };

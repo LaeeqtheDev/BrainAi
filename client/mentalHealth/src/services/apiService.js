@@ -17,25 +17,84 @@ const handle = async (res) => {
 };
 
 export const apiPost = async (path, body) => {
-  const headers = await getAuthHeaders();
-  const res = await fetch(`${API_BASE_URL}${path}`, { method: 'POST', headers, body: JSON.stringify(body) });
-  return handle(res);
+  console.log(`📤 POST ${API_BASE_URL}${path}`);
+  console.log('📦 Body:', body);
+  
+  try {
+    const headers = await getAuthHeaders();
+    console.log('🔑 Headers:', headers);
+    
+    const res = await fetch(`${API_BASE_URL}${path}`, { 
+      method: 'POST', 
+      headers, 
+      body: JSON.stringify(body) 
+    });
+    
+    console.log(`📥 Response status: ${res.status}`);
+    const result = await handle(res);
+    console.log('✅ Result:', result);
+    return result;
+  } catch (error) {
+    console.error(`❌ POST ${path} failed:`, error.message);
+    throw error;
+  }
 };
 
 export const apiGet = async (path) => {
-  const headers = await getAuthHeaders();
-  const res = await fetch(`${API_BASE_URL}${path}`, { method: 'GET', headers });
-  return handle(res);
+  console.log(`📤 GET ${API_BASE_URL}${path}`);
+  
+  try {
+    const headers = await getAuthHeaders();
+    console.log('🔑 Headers:', headers);
+    
+    const res = await fetch(`${API_BASE_URL}${path}`, { 
+      method: 'GET', 
+      headers 
+    });
+    
+    console.log(`📥 Response status: ${res.status}`);
+    const result = await handle(res);
+    console.log('✅ Result:', result);
+    return result;
+  } catch (error) {
+    console.error(`❌ GET ${path} failed:`, error.message);
+    throw error;
+  }
 };
 
 export const apiPut = async (path, body) => {
-  const headers = await getAuthHeaders();
-  const res = await fetch(`${API_BASE_URL}${path}`, { method: 'PUT', headers, body: JSON.stringify(body) });
-  return handle(res);
+  console.log(`📤 PUT ${API_BASE_URL}${path}`);
+  
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}${path}`, { 
+      method: 'PUT', 
+      headers, 
+      body: JSON.stringify(body) 
+    });
+    
+    console.log(`📥 Response status: ${res.status}`);
+    return handle(res);
+  } catch (error) {
+    console.error(`❌ PUT ${path} failed:`, error.message);
+    throw error;
+  }
 };
 
 export const apiDelete = async (path) => {
-  const headers = await getAuthHeaders();
-  const res = await fetch(`${API_BASE_URL}${path}`, { method: 'DELETE', headers });
-  return handle(res);
+  console.log(`📤 DELETE ${API_BASE_URL}${path}`);
+  
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}${path}`, { 
+      method: 'DELETE', 
+      headers 
+    });
+    
+    console.log(`📥 Response status: ${res.status}`);
+    return handle(res);
+  } catch (error) {
+    console.error(`❌ DELETE ${path} failed:`, error.message);
+    throw error;
+  }
 };

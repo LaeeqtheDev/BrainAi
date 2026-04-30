@@ -5,12 +5,25 @@ import { Colors, Fonts, FontSizes } from '../config/theme';
 
 // data: [{ label: 'Mon', value: 3 }, ...] — value 1-5, null = no data
 export default function MoodLineChart({ data, height = 180 }) {
+  console.log('📊 MoodLineChart data:', JSON.stringify(data, null, 2));
+
   const width = 320;
   const padding = { top: 16, right: 16, bottom: 28, left: 28 };
   const innerW = width - padding.left - padding.right;
   const innerH = height - padding.top - padding.bottom;
 
-  const valid = data.filter((d) => d.value != null);
+  // Check if data exists and is valid
+  if (!data || !Array.isArray(data)) {
+    console.log('❌ Invalid data:', data);
+    return (
+      <View style={[styles.empty, { height }]}>
+        <Text style={styles.emptyText}>Chart data is invalid</Text>
+      </View>
+    );
+  }
+
+  const valid = data.filter((d) => d.value != null && typeof d.value === 'number');
+  console.log('✅ Valid data points:', valid.length, 'out of', data.length);
 
   if (valid.length === 0) {
     return (
@@ -21,13 +34,26 @@ export default function MoodLineChart({ data, height = 180 }) {
   }
 
   const xStep = data.length > 1 ? innerW / (data.length - 1) : 0;
-  const yFor = (v) => padding.top + innerH - ((v - 1) / 4) * innerH;
+  const yFor = (v) => {
+    // Ensure value is between 1-5
+    const clampedV = Math.max(1, Math.min(5, v));
+    return padding.top + innerH - ((clampedV - 1) / 4) * innerH;
+  };
   const xFor = (i) => padding.left + i * xStep;
 
   const points = data
-    .map((d, i) => (d.value != null ? `${xFor(i)},${yFor(d.value)}` : null))
+    .map((d, i) => {
+      if (d.value != null && typeof d.value === 'number') {
+        const x = xFor(i);
+        const y = yFor(d.value);
+        return `${x},${y}`;
+      }
+      return null;
+    })
     .filter(Boolean)
     .join(' ');
+
+  console.log('📈 Chart points:', points);
 
   return (
     <View>
@@ -43,18 +69,20 @@ export default function MoodLineChart({ data, height = 180 }) {
         ))}
 
         {/* line */}
-        <Polyline
-          points={points}
-          fill="none"
-          stroke={Colors.primary}
-          strokeWidth={2.5}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
+        {points && (
+          <Polyline
+            points={points}
+            fill="none"
+            stroke={Colors.primary}
+            strokeWidth={2.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
 
         {/* dots */}
         {data.map((d, i) =>
-          d.value != null ? (
+          d.value != null && typeof d.value === 'number' ? (
             <Circle
               key={i}
               cx={xFor(i)} cy={yFor(d.value)} r={5}
@@ -75,7 +103,7 @@ export default function MoodLineChart({ data, height = 180 }) {
             textAnchor="middle"
             fontFamily={Fonts.body}
           >
-            {d.label}
+            {d.label || ''}
           </SvgText>
         ))}
       </Svg>

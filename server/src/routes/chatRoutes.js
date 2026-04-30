@@ -1,23 +1,77 @@
 const express = require('express');
-const router = express.Router(); // ✅ FIX (THIS WAS MISSING)
-
+const router = express.Router();
 const { db } = require('../config/firebase');
 const { verifyToken } = require('../middleware/authMiddleware');
-const { analyzeEmotionConversational } = require('../services/groqService');
+const { analyzeEmotionConversational, generateOpener } = require('../services/groqService');
 
-// protect routes
 router.use(verifyToken);
 
+// Build full user context (moods, journal, streak, dominant emotion) for the AI
+async function buildUserContext(userId) {
+  const userDoc = await db.collection('users').doc(userId).get();
+  const userName = userDoc.exists ? (userDoc.data().name || 'friend') : 'friend';
 
-// GET /api/chat/opener — generates a contextual greeting based on user history
+  const moodSnap = await db.collection('moodLogs')
+    .where('userId', '==', userId)
+    .orderBy('timestamp', 'desc').limit(10).get();
+
+  const recentMoods = moodSnap.docs.map((d) => {
+    const data = d.data();
+    return {
+      emotion: data.emotion,
+      intensity: data.intensity,
+      note: data.note,
+      moodKey: data.moodKey,
+      when: data.timestamp.toDate().toISOString(),
+    };
+  });
+
+  const journalSnap = await db.collection('journals')
+    .where('userId', '==', userId)
+    .orderBy('createdAt', 'desc').limit(5).get();
+
+  const recentJournal = journalSnap.docs.map((d) => {
+    const data = d.data();
+    return {
+      title: data.title,
+      snippet: (data.content || '').slice(0, 240),
+      emotionTag: data.emotionTag,
+      when: data.createdAt.toDate().toISOString(),
+    };
+  });
+
+  // Streak calc
+  let currentStreak = 0;
+  if (recentMoods.length) {
+    const dates = [...new Set(recentMoods.map((m) => {
+      const dt = new Date(m.when); dt.setHours(0, 0, 0, 0); return dt.getTime();
+    }))].sort((a, b) => b - a);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    if (dates[0] === today.getTime() || dates[0] === today.getTime() - 86400000) {
+      currentStreak = 1;
+      for (let i = 0; i < dates.length - 1; i++) {
+        if (dates[i] - dates[i + 1] === 86400000) currentStreak++;
+        else break;
+      }
+    }
+  }
+
+  // Dominant emotion (last 7 days)
+  const weekAgo = Date.now() - 7 * 86400000;
+  const recentForDominant = recentMoods.filter((m) => new Date(m.when).getTime() >= weekAgo);
+  const counts = {};
+  recentForDominant.forEach((m) => { counts[m.emotion] = (counts[m.emotion] || 0) + 1; });
+  const dominantEmotion = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0] || null;
+
+  return { userName, recentMoods, recentJournal, currentStreak, dominantEmotion };
+}
+
+// GET /api/chat/opener — contextual greeting based on user's data
 router.get('/opener', async (req, res) => {
   try {
     const { userId } = req.user;
-
-    // Build context same as /message
     const userContext = await buildUserContext(userId);
 
-    // Get last 1-2 chat exchanges so we know what we last talked about
     const lastChatSnap = await db.collection('chats')
       .where('userId', '==', userId)
       .orderBy('timestamp', 'desc')
@@ -30,7 +84,6 @@ router.get('/opener', async (req, res) => {
     }));
 
     const opener = await generateOpener(userContext, lastTopics);
-
     res.json({ success: true, data: opener });
   } catch (e) {
     console.error('Opener error:', e);
@@ -38,90 +91,76 @@ router.get('/opener', async (req, res) => {
   }
 });
 
-
-// =========================
-// CHAT MESSAGE
-// =========================
+// POST /api/chat/message
 router.post('/message', async (req, res) => {
   try {
     const { userId } = req.user;
     const { message } = req.body;
-
-    if (!message) {
-      return res.status(400).json({
-        success: false,
-        error: 'message required',
-      });
+    if (!message || !message.trim()) {
+      return res.status(400).json({ success: false, error: 'message required' });
     }
 
-    // fetch last chats
     const historySnap = await db.collection('chats')
       .where('userId', '==', userId)
-      .orderBy('timestamp', 'desc')
-      .limit(10)
-      .get();
+      .orderBy('timestamp', 'desc').limit(20).get();
 
-    const conversationHistory = historySnap.docs
-      .map(d => {
-        const c = d.data();
-        return [
-          { role: 'user', content: c.userMessage },
-          { role: 'assistant', content: c.aiResponse }
-        ];
-      })
-      .flat()
-      .reverse();
+    const conversationHistory = [];
+    historySnap.docs.reverse().forEach((doc) => {
+      const c = doc.data();
+      conversationHistory.push({ role: 'user', content: c.userMessage });
+      conversationHistory.push({ role: 'assistant', content: c.aiResponse });
+    });
 
-    // AI response
-    const analysis = await analyzeEmotionConversational(message, conversationHistory);
+    const userContext = await buildUserContext(userId);
+    console.log(`💬 ${userContext.userName} (streak: ${userContext.currentStreak}, dominant: ${userContext.dominantEmotion})`);
 
-    // crisis detection (simple + safe)
-    const crisisWords = ['suicide', 'kill myself', 'end my life', 'die'];
+    const analysis = await analyzeEmotionConversational(message, conversationHistory, userContext);
 
-    const crisisFlag = crisisWords.some(w =>
-      message.toLowerCase().includes(w)
-    );
-
-    // save chat
     const chatRef = await db.collection('chats').add({
       userId,
       userMessage: message,
       aiResponse: analysis.response,
       emotion: analysis.emotion,
+      moveUsed: analysis.moveUsed || null,
+      followUpPrompts: analysis.followUpPrompts || [],
+      crisisFlag: analysis.crisisFlag || false,
       timestamp: new Date(),
-      crisisFlag,
     });
 
-    return res.json({
+    // Auto-log mood from chat if confidence is high and emotion is meaningful
+    if (analysis.emotion && analysis.emotion !== 'neutral' && analysis.nlpAnalysis?.confidence === 'high') {
+      await db.collection('moodLogs').add({
+        userId,
+        emotion: analysis.emotion,
+        intensity: analysis.nlpAnalysis?.sentimentIntensity === 'high' ? 8 : 5,
+        note: `(from chat) ${message.slice(0, 120)}`,
+        source: 'chat',
+        timestamp: new Date(),
+      });
+    }
+
+    res.json({
       success: true,
       data: {
         chatId: chatRef.id,
-        response: analysis.response,
         emotion: analysis.emotion,
+        response: analysis.response,
         followUpPrompts: analysis.followUpPrompts || [],
-        crisisFlag,
-        crisisResources: crisisFlag
-          ? {
-              message: "You are not alone. Support is available.",
-              hotline: "Emergency: 1122 / Local helpline",
-            }
-          : null,
+        crisisFlag: analysis.crisisFlag || false,
+        crisisResources: analysis.crisisFlag ? {
+          message: "you don't have to face this alone.",
+          hotline: '0311-7786264 (Umang Pakistan)',
+          emergency: '1122',
+        } : null,
       },
     });
-
   } catch (e) {
-    console.error('chat error:', e);
-
-    return res.status(500).json({
-      success: false,
-      error: e.message,
-    });
+    console.error('Chat error:', e);
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 
-// =========================
-// CHAT HISTORY
-// =========================
+// GET /api/chat/history
 router.get('/history', async (req, res) => {
   try {
     const { userId } = req.user;
@@ -129,54 +168,29 @@ router.get('/history', async (req, res) => {
 
     const snap = await db.collection('chats')
       .where('userId', '==', userId)
-      .orderBy('timestamp', 'desc')
-      .limit(limit)
-      .get();
+      .orderBy('timestamp', 'desc').limit(limit).get();
 
-    const chats = snap.docs.map(d => ({
-      id: d.id,
-      ...d.data(),
+    const chats = snap.docs.map((d) => ({
+      id: d.id, ...d.data(),
       timestamp: d.data().timestamp.toDate().toISOString(),
     }));
-
-    return res.json({
-      success: true,
-      data: chats,
-    });
-
+    res.json({ success: true, data: chats });
   } catch (e) {
-    return res.status(500).json({
-      success: false,
-      error: e.message,
-    });
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 
-// =========================
-// CLEAR CHAT
-// =========================
+// DELETE /api/chat/clear
 router.delete('/clear', async (req, res) => {
   try {
     const { userId } = req.user;
-
-    const snap = await db.collection('chats')
-      .where('userId', '==', userId)
-      .get();
-
+    const snap = await db.collection('chats').where('userId', '==', userId).get();
     const batch = db.batch();
-    snap.docs.forEach(doc => batch.delete(doc.ref));
-    await batch.commit();
-
-    return res.json({
-      success: true,
-      cleared: snap.size,
-    });
-
+    snap.docs.forEach((d) => batch.delete(d.ref));
+    if (snap.size) await batch.commit();
+    res.json({ success: true, cleared: snap.size });
   } catch (e) {
-    return res.status(500).json({
-      success: false,
-      error: e.message,
-    });
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 

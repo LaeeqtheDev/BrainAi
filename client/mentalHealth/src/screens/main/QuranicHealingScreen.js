@@ -1,76 +1,180 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { Audio } from 'expo-av';
 
-import { QURAN_VERSES, VERSE_CATEGORIES } from '../../data/quranVerses';
-import { getVersesByCategory } from '../../services/quranService';
+import {
+  getVersesByCategory, getFavoriteVerses, toggleFavoriteVerse,
+} from '../../services/quranService';
 
 import ScreenHeader from '../../components/common/ScreenHeader';
 import { Colors, Spacing, Fonts, FontSizes, Radius, Shadow } from '../../config/theme';
+
+const CATEGORIES = [
+  { key: 'all', label: 'All Verses' },
+  { key: 'favorites', label: 'Favorites' },
+  { key: 'stress', label: 'Stress Relief' },
+  { key: 'hope', label: 'Hope' },
+  { key: 'patience', label: 'Patience' },
+  { key: 'peace', label: 'Peace' },
+];
 
 const CARD_TINTS = ['#EFE6D6', '#E2EAE3', '#F5DECF', '#E8E1F0', '#DCEAE5'];
 
 export default function QuranicHealingScreen({ navigation }) {
   const [activeCategory, setActiveCategory] = useState('all');
+  const [verses, setVerses] = useState([]);
   const [favorites, setFavorites] = useState([]);
-  const [verses, setVerses] = useState(QURAN_VERSES);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // Load verses (backend → fallback local)
-  const loadVerses = useCallback(async () => {
+  const [playingId, setPlayingId] = useState(null);
+  const [loadingAudioId, setLoadingAudioId] = useState(null);
+  const soundRef = useRef(null);
+
+  // Load verses for the active category (or favorites)
+  const loadVerses = useCallback(async (cat) => {
     setLoading(true);
     try {
-      const remote =
-        activeCategory === 'all'
-          ? await getVersesByCategory('all')
-          : await getVersesByCategory(activeCategory);
-
-      if (remote && remote.length) {
-        setVerses(remote);
+      if (cat === 'favorites') {
+        const favs = await getFavoriteVerses();
+        setVerses(favs);
+      } else {
+        const data = await getVersesByCategory(cat);
+        setVerses(data || []);
       }
     } catch (e) {
-      // silent fallback → local data already active
+      console.log('Verses load error:', e.message);
+      setVerses([]);
     } finally {
       setLoading(false);
     }
-  }, [activeCategory]);
+  }, []);
+
+  // Load favorites separately so we can show heart state across categories
+  const loadFavorites = useCallback(async () => {
+    try {
+      const favs = await getFavoriteVerses();
+      setFavorites(favs.map((f) => f.verseId || f.id));
+    } catch (e) {
+      console.log('Favorites load error:', e.message);
+    }
+  }, []);
 
   useEffect(() => {
-    loadVerses();
-  }, [loadVerses]);
+    loadVerses(activeCategory);
+  }, [activeCategory, loadVerses]);
 
   useFocusEffect(
     useCallback(() => {
-      // favorites are session-only (no persistence)
-    }, [])
+      loadFavorites();
+      // Stop audio when leaving screen
+      return () => {
+        stopAudio();
+      };
+    }, [loadFavorites])
   );
 
-  // Local favorites only (NO backend)
-  const toggleFav = (verseId) => {
-    setFavorites((prev) => {
-      const exists = prev.includes(verseId);
-      return exists
-        ? prev.filter((id) => id !== verseId)
-        : [...prev, verseId];
-    });
+  const stopAudio = async () => {
+    try {
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+    } catch {}
+    setPlayingId(null);
+    setLoadingAudioId(null);
   };
 
-  const filtered =
-    activeCategory === 'all'
-      ? verses
-      : activeCategory === 'favorites'
-      ? verses.filter((v) => favorites.includes(v.id))
-      : verses.filter((v) => v.category === activeCategory);
+  const toggleFav = async (verse) => {
+    const verseId = verse.verseId || verse.id;
+    const isFav = favorites.includes(verseId);
+
+    // Optimistic UI
+    setFavorites((prev) => isFav ? prev.filter((id) => id !== verseId) : [...prev, verseId]);
+
+    const result = await toggleFavoriteVerse(verse);
+    if (!result.success) {
+      // Revert on failure
+      setFavorites((prev) => isFav ? [...prev, verseId] : prev.filter((id) => id !== verseId));
+      Alert.alert('Could not save', result.error || 'Try again.');
+      return;
+    }
+
+    // Refresh favorites view if we're currently looking at it
+    if (activeCategory === 'favorites') {
+      loadVerses('favorites');
+    }
+  };
+
+  const playAudio = async (verse) => {
+    const verseId = verse.verseId || verse.id;
+    console.log('🎵 playAudio:', { verseId, audioUrl: verse.audioUrl });
+
+    // If this verse is currently playing → stop it (toggle behavior)
+    if (playingId === verseId) {
+      console.log('🛑 Toggling off');
+      await stopAudio();
+      return;
+    }
+
+    // If a different verse is playing, unload it first
+    if (soundRef.current) {
+      try { await soundRef.current.unloadAsync(); } catch {}
+      soundRef.current = null;
+    }
+
+    if (!verse.audioUrl) {
+      Alert.alert('Audio unavailable', 'No recitation URL on this verse.');
+      return;
+    }
+
+    setLoadingAudioId(verseId);
+
+    try {
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        staysActiveInBackground: false,
+      });
+
+      console.log('⬇️  Loading audio:', verse.audioUrl);
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: verse.audioUrl },
+        { shouldPlay: true }
+      );
+
+      soundRef.current = sound;
+      setLoadingAudioId(null);
+      setPlayingId(verseId);
+      console.log('▶️  Playing');
+
+      sound.setOnPlaybackStatusUpdate((s) => {
+        if (s.error) {
+          console.log('🔥 Playback error:', s.error);
+          Alert.alert('Playback error', s.error);
+          stopAudio();
+          return;
+        }
+        if (s.didJustFinish) {
+          console.log('✅ Finished');
+          stopAudio();
+        }
+      });
+    } catch (e) {
+      console.log('💥 Audio error:', e.message);
+      Alert.alert('Could not play', e.message);
+      setLoadingAudioId(null);
+      setPlayingId(null);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-
-        {/* Header */}
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.back}>
             <Ionicons name="chevron-back" size={22} color={Colors.textPrimary} />
@@ -83,7 +187,6 @@ export default function QuranicHealingScreen({ navigation }) {
           subtitle="Verses to comfort, ground, and remind."
         />
 
-        {/* Intro */}
         <View style={styles.intro}>
           <View style={styles.introIcon}>
             <Ionicons name="book-outline" size={20} color={Colors.primary} />
@@ -91,15 +194,14 @@ export default function QuranicHealingScreen({ navigation }) {
           <View style={{ flex: 1 }}>
             <Text style={styles.introTitle}>Spiritual Wellness</Text>
             <Text style={styles.introText}>
-              These verses offer comfort, hope, and guidance during challenging times.
+              Listen, reflect, find solace. Recitation by Mishary Rashid Alafasy.
             </Text>
           </View>
         </View>
 
-        {/* Categories */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
           <View style={styles.chipRow}>
-            {VERSE_CATEGORIES.map((c) => {
+            {CATEGORIES.map((c) => {
               const active = activeCategory === c.key;
               return (
                 <TouchableOpacity
@@ -117,29 +219,32 @@ export default function QuranicHealingScreen({ navigation }) {
           </View>
         </ScrollView>
 
-        {/* Content */}
         {loading ? (
           <ActivityIndicator color={Colors.primary} style={{ marginTop: 40 }} />
-        ) : filtered.length === 0 ? (
-          <Text style={styles.empty}>No verses in this category yet.</Text>
+        ) : verses.length === 0 ? (
+          <Text style={styles.empty}>
+            {activeCategory === 'favorites'
+              ? 'No favorites yet — tap the heart on any verse to save it.'
+              : 'No verses available right now.'}
+          </Text>
         ) : (
-          filtered.map((v, i) => {
-            const isFav = favorites.includes(v.id);
+          verses.map((v, i) => {
+            const verseId = v.verseId || v.id;
+            const isFav = favorites.includes(verseId);
+            const isPlaying = playingId === verseId;
+            const isLoadingThis = loadingAudioId === verseId;
 
             return (
               <View
-                key={v.id}
-                style={[
-                  styles.verseCard,
-                  { backgroundColor: CARD_TINTS[i % CARD_TINTS.length] },
-                ]}
+                key={verseId}
+                style={[styles.verseCard, { backgroundColor: CARD_TINTS[i % CARD_TINTS.length] }]}
               >
                 <View style={styles.verseHeader}>
                   <View style={styles.tagPill}>
                     <Text style={styles.tagText}>{v.tag}</Text>
                   </View>
 
-                  <TouchableOpacity onPress={() => toggleFav(v.id)} style={styles.favBtn}>
+                  <TouchableOpacity onPress={() => toggleFav(v)} style={styles.favBtn}>
                     <Ionicons
                       name={isFav ? 'heart' : 'heart-outline'}
                       size={20}
@@ -153,18 +258,28 @@ export default function QuranicHealingScreen({ navigation }) {
                 <Text style={styles.reference}>{v.reference}</Text>
 
                 <TouchableOpacity
-                  style={styles.audioBtn}
-                  onPress={() => Alert.alert('Audio', 'Recitation playback is coming soon.')}
+                  style={[styles.audioBtn, isPlaying && styles.audioBtnActive]}
+                  onPress={() => playAudio(v)}
                   activeOpacity={0.85}
+                  disabled={isLoadingThis}
                 >
-                  <Ionicons name="play" size={16} color={Colors.primary} />
-                  <Text style={styles.audioText}>Play Audio</Text>
+                  {isLoadingThis ? (
+                    <ActivityIndicator size="small" color={Colors.primary} />
+                  ) : (
+                    <Ionicons
+                      name={isPlaying ? 'stop' : 'play'}
+                      size={16}
+                      color={Colors.primary}
+                    />
+                  )}
+                  <Text style={styles.audioText}>
+                    {isLoadingThis ? 'Loading…' : isPlaying ? 'Stop' : 'Play recitation'}
+                  </Text>
                 </TouchableOpacity>
               </View>
             );
           })
         )}
-
       </ScrollView>
     </SafeAreaView>
   );
@@ -202,7 +317,10 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   chipText: { fontSize: FontSizes.sm, fontFamily: Fonts.bodyMedium, color: Colors.textPrimary },
   chipTextActive: { color: Colors.textOnDark },
-  empty: { textAlign: 'center', fontSize: FontSizes.sm, fontFamily: Fonts.body, color: Colors.textMuted, marginTop: Spacing.xl },
+  empty: {
+    textAlign: 'center', fontSize: FontSizes.sm, fontFamily: Fonts.body,
+    color: Colors.textMuted, marginTop: Spacing.xl, paddingHorizontal: Spacing.lg, lineHeight: 20,
+  },
   verseCard: { borderRadius: Radius.lg, padding: Spacing.lg, marginBottom: Spacing.md },
   verseHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
@@ -234,8 +352,11 @@ const styles = StyleSheet.create({
   },
   audioBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: 'rgba(255,255,255,0.7)',
+    backgroundColor: 'rgba(255,255,255,0.85)',
     paddingVertical: 12, borderRadius: Radius.pill,
+  },
+  audioBtnActive: {
+    backgroundColor: Colors.surface,
   },
   audioText: { fontSize: FontSizes.sm, fontFamily: Fonts.bodyMedium, color: Colors.primary, letterSpacing: 0.3 },
 });

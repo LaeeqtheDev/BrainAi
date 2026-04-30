@@ -3,7 +3,6 @@ const router = express.Router();
 const { auth, db } = require('../config/firebase');
 
 // POST /api/auth/signup - Create new user
-
 router.post('/signup', async (req, res) => {
   try {
     const { email, name } = req.body;
@@ -30,6 +29,75 @@ router.post('/signup', async (req, res) => {
     res.json({ success: true, data: { userId: uid, email, name } });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// 🔥 NEW: POST /api/auth/google - Handle Google Sign-In
+router.post('/google', async (req, res) => {
+  try {
+    const { idToken } = req.body;
+
+    if (!idToken) {
+      return res.status(400).json({ success: false, error: 'ID token required' });
+    }
+
+    console.log('🔐 Verifying Google ID token...');
+
+    // Verify the Google ID token with Firebase Admin
+    const decodedToken = await auth.verifyIdToken(idToken);
+    const { uid, email, name, picture } = decodedToken;
+
+    console.log('✅ Token verified:', email);
+
+    // Check if user exists in Firestore
+    const userRef = db.collection('users').doc(uid);
+    const userDoc = await userRef.get();
+
+    if (!userDoc.exists) {
+      // Create new user with default settings
+      console.log('👤 Creating new user:', email);
+      await userRef.set({
+        userId: uid,
+        email,
+        name: name || email.split('@')[0],
+        profilePicture: picture || null,
+        provider: 'google',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        notifications: { dailyReminders: true, breathingReminders: true, weeklyInsights: true },
+        general: { language: 'English' },
+        privacy: { dataCollection: true, analytics: true },
+        security: { appLock: false, biometricEnabled: false },
+      });
+    } else {
+      // Update last login
+      console.log('👤 Updating existing user:', email);
+      await userRef.update({
+        updatedAt: new Date(),
+      });
+    }
+
+    // Generate custom token for the user
+    const customToken = await auth.createCustomToken(uid);
+
+    res.json({
+      success: true,
+      data: {
+        customToken,
+        user: {
+          uid,
+          email,
+          name: name || email.split('@')[0],
+          profilePicture: picture || null,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('❌ Google auth error:', error);
+    res.status(401).json({ 
+      success: false, 
+      error: error.message || 'Invalid Google token' 
+    });
   }
 });
 
