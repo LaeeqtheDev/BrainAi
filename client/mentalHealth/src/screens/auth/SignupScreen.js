@@ -1,17 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, SafeAreaView, KeyboardAvoidingView,
   Platform, TouchableOpacity, Alert, StyleSheet, StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Constants from 'expo-constants';
+import * as Google from 'expo-auth-session/providers/google';
+import * as WebBrowser from 'expo-web-browser';
+import { makeRedirectUri } from 'expo-auth-session';
 
-import { signUp } from '../../services/authService';
+import { signUp, signInWithGoogle } from '../../services/authService';
 import Input from '../../components/common/Input';
 import Button from '../../components/common/Button';
 import { Colors, Spacing, Fonts, FontSizes } from '../../config/theme';
 
-const isExpoGo = Constants.appOwnership === 'expo';
+WebBrowser.maybeCompleteAuthSession();
+
+const WEB_CLIENT_ID = "935704804413-75a46pcl5preh955nduif9q45jdnl86k.apps.googleusercontent.com";
 
 export default function SignupScreen({ navigation }) {
   const [fullName, setFullName] = useState('');
@@ -20,6 +24,39 @@ export default function SignupScreen({ navigation }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+
+  // 🔥 GOOGLE AUTH
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    clientId: WEB_CLIENT_ID,
+    redirectUri: makeRedirectUri({ useProxy: true }),
+    scopes: ['profile', 'email'],
+  });
+
+  useEffect(() => {
+    if (response?.type === 'success') {
+      const idToken = response.authentication?.idToken;
+      if (idToken) {
+        handleGoogleSignUp(idToken);
+      }
+    } else if (response?.type === 'error') {
+      Alert.alert('Google Sign-Up Failed', response.error?.message || 'Something went wrong');
+    }
+  }, [response]);
+
+  const handleGoogleSignUp = async (idToken) => {
+    setLoading(true);
+    try {
+      const result = await signInWithGoogle(idToken);
+      if (!result.success) {
+        Alert.alert('Google Sign-Up Failed', result.error);
+      }
+      // AppNavigator handles routing on auth state change
+    } catch (error) {
+      Alert.alert('Error', error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const validate = () => {
     const e = {};
@@ -43,14 +80,7 @@ export default function SignupScreen({ navigation }) {
   };
 
   const handleGoogle = () => {
-    if (isExpoGo) {
-      Alert.alert(
-        'Google Sign-In unavailable',
-        'Google Sign-In requires a development build. Please sign up with email while testing in Expo Go.'
-      );
-    } else {
-      Alert.alert('Coming soon', 'Google Sign-In will be wired up after we set up the development build.');
-    }
+    promptAsync({ useProxy: true });
   };
 
   return (
@@ -130,6 +160,7 @@ export default function SignupScreen({ navigation }) {
             title="Continue with Google"
             variant="secondary"
             onPress={handleGoogle}
+            disabled={!request || loading}
             icon={<Ionicons name="logo-google" size={18} color={Colors.textPrimary} />}
           />
 

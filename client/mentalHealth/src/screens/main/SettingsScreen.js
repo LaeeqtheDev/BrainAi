@@ -134,8 +134,6 @@ export default function SettingsScreen() {
         </Section>
 
         <Section title="Account">
-          <Link icon="mail-outline" tint="#EFE6D6"
-            label="Contact support" onPress={() => navigation.navigate('HelpSupport')} />
           <Link icon="log-out-outline" tint="#F5DECF"
             label="Sign out" onPress={handleSignOut} danger isLast />
         </Section>

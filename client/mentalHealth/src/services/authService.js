@@ -3,9 +3,11 @@ import {
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   updateProfile,
+  signInWithCustomToken,
 } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import { apiPost } from './apiService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const signUp = async (email, password, fullName) => {
   try {
@@ -36,8 +38,46 @@ export const signIn = async (email, password) => {
   }
 };
 
+// 🔥 NEW: Google Sign-In via Backend
+export const signInWithGoogle = async (idToken) => {
+  try {
+    console.log('📤 Sending Google token to backend...');
+    
+    // Send ID token to backend for verification
+    const response = await apiPost('/api/auth/google', { idToken });
+    console.log('✅ Backend response:', response);
+
+    // Backend returns custom token and user data
+    const { customToken, user } = response;
+
+    // Sign in to Firebase with custom token
+    console.log('🔐 Signing in with custom token...');
+    await signInWithCustomToken(auth, customToken);
+    
+    // Store custom token
+    await AsyncStorage.setItem('userToken', customToken);
+
+    console.log('✅ Google sign-in successful:', user.email);
+
+    return {
+      success: true,
+      user,
+    };
+  } catch (error) {
+    console.error('❌ Google sign-in error:', error);
+    return {
+      success: false,
+      error: error.message || 'Google sign-in failed',
+    };
+  }
+};
+
 export const signOut = async () => {
-  try { await firebaseSignOut(auth); return { success: true }; }
+  try { 
+    await firebaseSignOut(auth); 
+    await AsyncStorage.removeItem('userToken');
+    return { success: true }; 
+  }
   catch (e) { return { success: false, error: e.message }; }
 };
 
