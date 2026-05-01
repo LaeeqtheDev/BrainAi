@@ -1,23 +1,25 @@
 import { auth } from './firebase';
 import { Platform } from 'react-native';
 
-// 🔥 MULTIPLE NETWORK SUPPORT
+// 🔥 DEPLOYMENT MODE - Change this to switch environments
+const USE_PRODUCTION = true; // Set to false for local testing
+
+// 🌐 PRODUCTION URL
+const PRODUCTION_URL = 'https://brainai-i7re.onrender.com';
+
+// 🏠 LOCAL DEVELOPMENT - Multiple Network IPs
 const NETWORK_IPS = {
-  HOME: '192.168.18.4',      // Home WiFi
-  MCDONALDS: '172.20.10.3', 
-  pixel: '10.52.207.205' // McDonald's WiFi
-  // Add more as needed
+  HOME: '192.168.18.4',
+  MCDONALDS: '172.20.10.3',
+  PIXEL: '10.52.207.205',
 };
 
-// 👇 CHANGE THIS WHEN YOU SWITCH NETWORKS!
-const CURRENT_NETWORK = 'pixel'; // ← Change to 'HOME' when at home
+const CURRENT_NETWORK = 'PIXEL'; // Change when switching networks
 
-const LOCAL_IP = NETWORK_IPS[CURRENT_NETWORK];
-
-export const API_BASE_URL =
-  Platform.OS === 'android'
-    ? `http://${LOCAL_IP}:5000`
-    : `http://${LOCAL_IP}:5000`;
+// 🎯 Select API URL based on mode
+export const API_BASE_URL = USE_PRODUCTION
+  ? PRODUCTION_URL
+  : `http://${NETWORK_IPS[CURRENT_NETWORK]}:5000`;
 
 export const getAuthHeaders = async () => {
   const user = auth.currentUser;
@@ -27,12 +29,17 @@ export const getAuthHeaders = async () => {
   };
 
   if (user) {
-    const token = await user.getIdToken();
-    headers.Authorization = `Bearer ${token}`;
+    try {
+      const token = await user.getIdToken();
+      headers.Authorization = `Bearer ${token}`;
+    } catch (error) {
+      console.error('Failed to get auth token:', error);
+    }
   }
 
   return headers;
 };
 
 // 🔍 Debug helper
-console.log(`🌐 API URL: ${API_BASE_URL}`);
+console.log(' API Base URL:', API_BASE_URL);
+console.log(' Mode:', USE_PRODUCTION ? 'PRODUCTION' : 'LOCAL DEVELOPMENT');
