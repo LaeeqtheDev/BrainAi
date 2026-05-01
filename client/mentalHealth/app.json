@@ -5,15 +5,21 @@
     "scheme": "mentalhealth",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
+      "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#faf8f3"
+      "backgroundColor": "#FAF6EF"
     },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.mentalhealthfitness.app",
+      "icon": "./assets/icon.png",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Allow Mental Health Fitness to access your photos so you can set a profile picture.",
         "NSCameraUsageDescription": "Allow Mental Health Fitness to use the camera for profile pictures.",
@@ -22,17 +28,29 @@
     },
     "android": {
       "package": "com.mentalhealthfitness.app",
+      "icon": "./assets/icon.png",
       "adaptiveIcon": {
-        "backgroundColor": "#faf8f3"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FAF6EF"
       },
-      "permissions": ["USE_BIOMETRIC", "USE_FINGERPRINT", "VIBRATE"]
+      "permissions": [
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.VIBRATE",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/icon.png"
     },
     "plugins": [
       "expo-font",
       "expo-web-browser",
       [
         "expo-notifications",
-        { "color": "#2D4A3E" }
+        {
+          "color": "#2D4A3E"
+        }
       ],
       [
         "expo-image-picker",
@@ -43,8 +61,15 @@
       ],
       [
         "expo-local-authentication",
-        { "faceIDPermission": "Use Face ID to unlock Mental Health Fitness." }
+        {
+          "faceIDPermission": "Use Face ID to unlock Mental Health Fitness."
+        }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "b5cc50bf-aa06-4c91-b40b-7c13e6ec4b05"
+      }
+    }
   }
 }
