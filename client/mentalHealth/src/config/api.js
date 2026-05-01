@@ -2,7 +2,7 @@ import { auth } from './firebase';
 import { Platform } from 'react-native';
 
 // 🔥 DEPLOYMENT MODE - Change this to switch environments
-const USE_PRODUCTION = true; // Set to false for local testing
+const USE_PRODUCTION = false; // Set to false for local testing
 
 // 🌐 PRODUCTION URL
 const PRODUCTION_URL = 'https://brainai-i7re.onrender.com';
@@ -14,7 +14,7 @@ const NETWORK_IPS = {
   PIXEL: '10.52.207.205',
 };
 
-const CURRENT_NETWORK = 'PIXEL'; // Change when switching networks
+const CURRENT_NETWORK = 'HOME'; // Change when switching networks
 
 // 🎯 Select API URL based on mode
 export const API_BASE_URL = USE_PRODUCTION
