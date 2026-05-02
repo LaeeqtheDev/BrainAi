@@ -37,13 +37,11 @@ export default function LoginScreen({ navigation }) {
     setGoogleLoading(true);
     const res = await signInWithGoogle();
     console.log('🔥 Google sign-in result:', res);
-    console.log('🔥 auth.currentUser:', auth.currentUser);  // import auth from config/firebase
     setGoogleLoading(false);
     if (!res.success && res.error !== 'Sign-in cancelled') {
       Alert.alert('Google Sign-In Failed', res.error);
     }
   };
-
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />

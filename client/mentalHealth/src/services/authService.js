@@ -26,7 +26,7 @@ if (Platform.OS !== 'web') {
   GoogleSignin = mod.GoogleSignin;
   statusCodes = mod.statusCodes;
   GoogleSignin.configure({
-    webClientId: '935704804413-75a46pcl5preh955nduif9q45jdnl86k.apps.googleusercontent.com',
+    webClientId: '846153977846-3t6ju4mbrr9fugsrm1kssr6d2hih2pfe.apps.googleusercontent.com',
     scopes: ['profile', 'email'],
     offlineAccess: false,
   });

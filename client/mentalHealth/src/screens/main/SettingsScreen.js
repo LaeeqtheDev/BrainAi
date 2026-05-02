@@ -82,8 +82,7 @@ export default function SettingsScreen() {
     } catch (e) {
       console.log('LOGOUT FAILED', e);
     }
-  };WGSLLanguageFeatures
-
+  }
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>

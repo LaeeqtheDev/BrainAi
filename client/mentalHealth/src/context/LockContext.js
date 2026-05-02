@@ -1,73 +1,57 @@
-import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authenticate, isBiometricAvailable } from '../services/biometricService';
 
 const KEY = 'appLock.enabled';
-
-const LockContext = createContext({
-  locked: false,
-  lockEnabled: false,
-  unlocking: false,
-  unlock: async () => {},
-  enableLock: async () => {},
-  disableLock: async () => {},
-});
+const LockContext = createContext();
 
 export const LockProvider = ({ children }) => {
   const [lockEnabled, setLockEnabled] = useState(false);
   const [locked, setLocked] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
 
-  // 🔥 HARD GUARDS (prevent race conditions)
   const appState = useRef(AppState.currentState);
-  const biometricActive = useRef(false);
-  const lockStateRef = useRef(false);
+  const unlockInProgress = useRef(false);
+  const lastStateChange = useRef(Date.now());
 
-  // sync ref with state
-  useEffect(() => {
-    lockStateRef.current = locked;
-  }, [locked]);
-
-  // load saved lock state
+  // Load saved state
   useEffect(() => {
     (async () => {
       const v = await AsyncStorage.getItem(KEY);
       if (v === '1') {
         setLockEnabled(true);
-        setLocked(true);
       }
     })();
   }, []);
 
-  // =========================
-  // APP STATE HANDLER (FIXED)
-  // =========================
+  // App state handler (FIXED debounce + stability)
   useEffect(() => {
     const sub = AppState.addEventListener('change', (nextState) => {
-      const wasActive = appState.current === 'active';
-      const isLeaving = nextState === 'inactive' || nextState === 'background';
+      const now = Date.now();
+      const delta = now - lastStateChange.current;
 
-      // 🚨 BLOCK EVERYTHING DURING BIOMETRIC FLOW
-      if (biometricActive.current) {
+      // debounce rapid switching (< 400ms)
+      if (delta < 400) {
         appState.current = nextState;
         return;
       }
 
-      // only lock on real background transition
-      if (wasActive && isLeaving && lockEnabled) {
-        setLocked(true);
-      }
-
+      const previous = appState.current;
       appState.current = nextState;
+      lastStateChange.current = now;
+
+      if (previous === 'active' && nextState.match(/inactive|background/)) {
+        if (lockEnabled) {
+          setLocked(true);
+          unlockInProgress.current = false; // reset any stuck unlock
+        }
+      }
     });
 
     return () => sub.remove();
   }, [lockEnabled]);
 
-  // =========================
-  // ENABLE LOCK
-  // =========================
   const enableLock = async () => {
     const available = await isBiometricAvailable();
     if (!available) {
@@ -75,9 +59,7 @@ export const LockProvider = ({ children }) => {
     }
 
     const ok = await authenticate('Enable App Lock');
-    if (!ok) {
-      return { success: false, error: 'Authentication failed' };
-    }
+    if (!ok) return { success: false, error: 'Authentication failed' };
 
     await AsyncStorage.setItem(KEY, '1');
     setLockEnabled(true);
@@ -86,14 +68,9 @@ export const LockProvider = ({ children }) => {
     return { success: true };
   };
 
-  // =========================
-  // DISABLE LOCK
-  // =========================
   const disableLock = async () => {
     const ok = await authenticate('Disable App Lock');
-    if (!ok) {
-      return { success: false, error: 'Authentication failed' };
-    }
+    if (!ok) return { success: false, error: 'Authentication failed' };
 
     await AsyncStorage.removeItem(KEY);
     setLockEnabled(false);
@@ -102,15 +79,12 @@ export const LockProvider = ({ children }) => {
     return { success: true };
   };
 
-  // =========================
-  // UNLOCK (FULLY ATOMIC)
-  // =========================
   const unlock = async () => {
-    // 🚨 HARD BLOCK re-entry
-    if (unlocking || biometricActive.current) return;
+    // HARD GUARD: prevents multiple biometric calls
+    if (unlockInProgress.current || unlocking) return;
 
+    unlockInProgress.current = true;
     setUnlocking(true);
-    biometricActive.current = true;
 
     try {
       const ok = await authenticate('Unlock App');
@@ -118,15 +92,13 @@ export const LockProvider = ({ children }) => {
       if (ok) {
         setLocked(false);
       }
-    } catch (e) {
-      console.log('Unlock error:', e);
     } finally {
       setUnlocking(false);
 
-      // 🔥 CRITICAL: delay prevents iOS/Android gesture race
+      // small delay prevents instant re-lock glitch
       setTimeout(() => {
-        biometricActive.current = false;
-      }, 900);
+        unlockInProgress.current = false;
+      }, 300);
     }
   };
 
@@ -136,9 +108,9 @@ export const LockProvider = ({ children }) => {
         locked,
         lockEnabled,
         unlocking,
-        unlock,
         enableLock,
         disableLock,
+        unlock,
       }}
     >
       {children}
