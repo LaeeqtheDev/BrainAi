@@ -1,21 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, ScrollView, SafeAreaView, KeyboardAvoidingView,
   Platform, TouchableOpacity, Alert, StyleSheet, StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Google from 'expo-auth-session/providers/google';
-import * as WebBrowser from 'expo-web-browser';
-import { makeRedirectUri } from 'expo-auth-session';
 
 import { signUp, signInWithGoogle } from '../../services/authService';
 import Input from '../../components/common/Input';
 import Button from '../../components/common/Button';
 import { Colors, Spacing, Fonts, FontSizes } from '../../config/theme';
-
-WebBrowser.maybeCompleteAuthSession();
-
-const WEB_CLIENT_ID = "935704804413-75a46pcl5preh955nduif9q45jdnl86k.apps.googleusercontent.com";
 
 export default function SignupScreen({ navigation }) {
   const [fullName, setFullName] = useState('');
@@ -23,40 +16,8 @@ export default function SignupScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [errors, setErrors] = useState({});
-
-  // 🔥 GOOGLE AUTH
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    clientId: WEB_CLIENT_ID,
-    redirectUri: makeRedirectUri({ useProxy: true }),
-    scopes: ['profile', 'email'],
-  });
-
-  useEffect(() => {
-    if (response?.type === 'success') {
-      const idToken = response.authentication?.idToken;
-      if (idToken) {
-        handleGoogleSignUp(idToken);
-      }
-    } else if (response?.type === 'error') {
-      Alert.alert('Google Sign-Up Failed', response.error?.message || 'Something went wrong');
-    }
-  }, [response]);
-
-  const handleGoogleSignUp = async (idToken) => {
-    setLoading(true);
-    try {
-      const result = await signInWithGoogle(idToken);
-      if (!result.success) {
-        Alert.alert('Google Sign-Up Failed', result.error);
-      }
-      // AppNavigator handles routing on auth state change
-    } catch (error) {
-      Alert.alert('Error', error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const validate = () => {
     const e = {};
@@ -70,17 +31,20 @@ export default function SignupScreen({ navigation }) {
 
   const handleSignup = async () => {
     if (!validate()) return;
-
     setLoading(true);
     const res = await signUp(email, password, fullName.trim());
     setLoading(false);
-
     if (!res.success) Alert.alert('Could not create account', res.error);
-    // AppNavigator handles routing
+    // AppNavigator routes on auth state change
   };
 
-  const handleGoogle = () => {
-    promptAsync({ useProxy: true });
+  const handleGoogle = async () => {
+    setGoogleLoading(true);
+    const res = await signInWithGoogle();
+    setGoogleLoading(false);
+    if (!res.success && res.error !== 'Sign-in cancelled') {
+      Alert.alert('Google Sign-In Failed', res.error);
+    }
   };
 
   return (
@@ -122,6 +86,7 @@ export default function SignupScreen({ navigation }) {
             onChangeText={setEmail}
             placeholder="you@example.com"
             keyboardType="email-address"
+            autoCapitalize="none"
             error={errors.email}
           />
 
@@ -147,6 +112,7 @@ export default function SignupScreen({ navigation }) {
             title="Create account"
             onPress={handleSignup}
             loading={loading}
+            disabled={loading || googleLoading}
             style={{ marginTop: Spacing.sm }}
           />
 
@@ -160,7 +126,8 @@ export default function SignupScreen({ navigation }) {
             title="Continue with Google"
             variant="secondary"
             onPress={handleGoogle}
-            disabled={!request || loading}
+            loading={googleLoading}
+            disabled={loading || googleLoading}
             icon={<Ionicons name="logo-google" size={18} color={Colors.textPrimary} />}
           />
 

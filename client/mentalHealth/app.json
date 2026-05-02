@@ -64,7 +64,8 @@
         {
           "faceIDPermission": "Use Face ID to unlock Mental Health Fitness."
         }
-      ]
+      ],
+      "@react-native-google-signin/google-signin"
     ],
     "extra": {
       "eas": {
