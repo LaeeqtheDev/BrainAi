@@ -1,15 +1,23 @@
 import { Platform } from 'react-native';
 import {
-  signInWithEmailAndPassword,
+ 
   createUserWithEmailAndPassword,
-  signInWithCredential,
+
   signInWithPopup,
-  GoogleAuthProvider,
+
   updateProfile,
   signOut as fbSignOut,
 } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import { API_BASE_URL } from '../config/api';
+
+import {
+  signInWithEmailAndPassword,
+  signOut as firebaseSignOut, // ✅ THIS WAS MISSING
+  GoogleAuthProvider,
+  signInWithCredential,
+} from 'firebase/auth';
+
 
 // Lazy-load native Google Sign-In ONLY on native platforms
 let GoogleSignin, statusCodes;
@@ -125,15 +133,17 @@ async function syncGoogleUser(firebaseUser) {
 }
 
 // ─── Sign Out ──────────────────────────────────────────────────────
-
 export const signOut = async () => {
   try {
-    if (Platform.OS !== 'web' && GoogleSignin) {
-      try { await GoogleSignin.signOut(); } catch {}
-    }
-    await fbSignOut(auth);
+    // 1. Firebase logout
+    await firebaseSignOut(auth);
+
+    // 2. Kill Expo auth browser session (CRITICAL for Google)
+    await WebBrowser.dismissBrowser();
+
     return { success: true };
   } catch (error) {
+    console.log('Logout error:', error);
     return { success: false, error: error.message };
   }
 };

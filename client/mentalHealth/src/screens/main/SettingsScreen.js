@@ -73,12 +73,16 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleSignOut = () => {
-    Alert.alert('Sign out?', 'You can come back anytime.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', style: 'destructive', onPress: () => signOut() },
-    ]);
-  };
+  const handleSignOut = async () => {
+    console.log('SIGN OUT CLICKED');
+  
+    try {
+      await signOut();
+      console.log('SIGNED OUT SUCCESSFULLY');
+    } catch (e) {
+      console.log('LOGOUT FAILED', e);
+    }
+  };WGSLLanguageFeatures
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
